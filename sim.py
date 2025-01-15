@@ -117,50 +117,6 @@ def generate_kernel(omega_a, omega_b, g_plus, g_minus):
     M[5, 5] = -omega_b
 
     return M
-    
-def generate_m_matrix(omega, omega_a, omega_b, g_plus, g_minus, Gamma_pp, Gamma_pm, Gamma_mm, Gamma_b):
-    """
-    Constructs the M-matrix
-
-    Parameters:
-        omega: Frequency argument.
-        omega_a: Parameter omega_a.
-        omega_b: Parameter omega_b.
-        g_plus: Parameter g_+.
-        g_minus: Parameter g_-.
-        Gamma_pp: Function Gamma_{++}(omega).
-        Gamma_pm: Function Gamma_{+-}(omega).
-        Gamma_mm: Function Gamma_{--}(omega).
-        Gamma_b: Function Gamma_{b}(omega).
-
-    Returns:
-        A 6x6 numpy matrix.
-    """    
-    kernel = generate_kernel(omega_a, omega_b, g_plus, g_minus)
-
-    # First row
-    kernel[0, 0] += Gamma_pp(omega)
-    kernel[0, 1] += Gamma_pm(omega)
-
-    # Second row
-    kernel[1, 0] += Gamma_pm(omega)
-    kernel[1, 1] += Gamma_mm(omega)
-
-    # Third row
-    kernel[2, 2] += Gamma_b(omega)
-
-    # Fourth row
-    kernel[3, 3] += Gamma_pp(-omega)
-    kernel[3, 4] +=  Gamma_pm(-omega)
-
-    # Fifth row
-    kernel[4, 3] += np.conj(Gamma_pm(-omega))
-    kernel[4, 4] += np.conj(Gamma_mm(-omega))
-
-    # Sixth row
-    kernel[5, 5] += np.conj(Gamma_b(-omega))
-
-    return -omega * np.eye(*kernel.shape) + kernel
 
 def bogoliubov(M):
     n = M.shape[0]//2
@@ -218,62 +174,21 @@ def plot_matter_content(kernel_func):
     plt.savefig("matter_content.pdf")
     plt.close()
 
+
+def compute_energy_transfer(w_p, w_m, t):
+    """computes spectrally integrated energy transfer from bogoliubov matrix    
+
+    Parameters:
+       w_p, w_m : constants coupling cavity to classical light field
+       t : bogoliubov transformation matrix
+      
+    Returns:
+       float
+    """
+
+    omega_a, omega_b = 1., 1.    
+    kernel = generate_kernel(omega_a, omega_b, g_plus, g_minus)
+    x = bogoliubov(kernel)            
+
 if __name__ == '__main__':    
-    ## system parameters##
-    # light, matter resonances
-    omega_b = 1.
-    omega_a = 1.# / 1.7
-    # chiral coupling
-    g_plus = 0.5 * omega_a
-    g_minus = g_plus
-    
-    kernel_func = lambda gp, gm : generate_kernel(omega_a, omega_b, gp, gm)
-    # plot_matter_content(kernel_func)
-    
-    ## bath parameters ##
-    # chiral reflectivities (non-dispersive)
-    c_ph_p, c_ph_m = 0.5, 0.5
-    # electronic bath coupling
-    c_el = 0.5
-    # photonic bath DOS (non-dispersive)
-    rho_ph = 0.01
-    # electronic bath DOS (non-dispersive)
-    rho_el = 0.01
-
-    for c_scale in [1.0, 0.1, 0.01]:
-        c_ph_m = c_scale * c_ph_p
-        
-        # chiral losses (imaginary part is parametric)
-        imag = 0# 1e-4j * omega_a
-        wrap = lambda c : lambda w : c  if w >= 0 else 0
-        Gamma_pp = wrap(c_ph_p**2 * rho_ph + imag)
-        Gamma_mp = wrap(c_ph_p*c_ph_m * rho_ph + imag)
-        Gamma_pm = wrap(c_ph_p*c_ph_m * rho_ph + imag)
-        Gamma_mm = wrap(c_ph_m**2 * rho_ph + imag)
-        # electronic losses (non-dispersive)
-        Gamma_b = wrap(c_el ** 2 * rho_el + imag)
-
-        ws = np.linspace(omega_b - 1*omega_b, omega_b + 1*omega_b, 150)
-        res = []
-        for omega in ws:
-            m_matrix = generate_m_matrix(omega, omega_a, omega_b, g_plus, g_minus, Gamma_pp, Gamma_pm, Gamma_mm, Gamma_b)
-            i_matrix =  np.array([
-                [c_ph_p * rho_ph, 0], 
-                [c_ph_m * rho_ph, 0],
-                [0, c_el * rho_el]
-            ], dtype = complex)    
-            prefac_matrix = np.array( [ [c_ph_p, c_ph_m, 0], [0, 0, c_el] ] )
-            u = np.eye(2) + prefac_matrix @ (np.linalg.inv(m_matrix)[:3, :3]) @ i_matrix
-            scattering_matrix = u#np.linalg.qr(u, mode = 'complete').Q
-            print(scattering_matrix @ scattering_matrix.conj().T)
-            absorption = np.abs(scattering_matrix[0,1])
-            res.append(absorption)
-        res = np.array(res)
-        plt.plot(ws, res, label = r'$\frac{c_-}{c_+}$ = ' + f'{c_scale}')
-        
-    plt.xlabel(r"$\dfrac{\omega}{\omega_b}$")
-    plt.ylabel("% Absorption")    
-    plt.legend()
-    plt.show()
-    # plt.savefig("abs.pdf")
-    plt.close()
+    compute_energy_transfer()
