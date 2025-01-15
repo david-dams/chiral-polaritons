@@ -2,9 +2,10 @@ import numpy as np
 import scipy
 import matplotlib.pyplot as plt
 
+# TODO : why exactly omega_a != omega_b is there some singularity?
+
 # chosen vals from paper: w_b = w_a, freq-independent rates g_a = 0.04 w_a, g_b = 0.08 w_a
 # plot abs(w) for varying values of g_+ / g_-, c_+ / c_-
-# plot light-matter content
 def test_pra():
     Omegas = np.linspace(0.01, 10, 100)
     dummy = []
@@ -146,7 +147,16 @@ def bogoliubov(M):
     
     return x
 
-def plot_matter_content(kernel_func):    
+def plot_matter_content():
+    # light, matter resonances
+    omega_b = 1.
+    omega_a = 1. / 1.7
+    # chiral coupling
+    g_plus = 0.5 * omega_a
+    g_minus = g_plus
+    
+    kernel_func = lambda gp, gm : generate_kernel(omega_a, omega_b, gp, gm)
+
     gs = np.linspace(0.01, 10, 1000)    
     for a in [0.0, 0.1, 0.8]:
         res = []
@@ -190,5 +200,6 @@ def compute_energy_transfer(w_p, w_m, t):
     kernel = generate_kernel(omega_a, omega_b, g_plus, g_minus)
     x = bogoliubov(kernel)            
 
-if __name__ == '__main__':    
+if __name__ == '__main__':
+    plot_matter_content()
     compute_energy_transfer()
