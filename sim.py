@@ -119,7 +119,7 @@ def generate_kernel(omega_a, omega_b, g_plus, g_minus):
     return M
 
 def bogoliubov(M):
-    """bogoliubov transformation matrix for a kernel M"""
+    """bogoliubov transformation matrix $T$ for a kernel M, i.e. the matrix that diagonalizes $H = Ma a^{\\dagger}$ via $a' = T a$ obeying $TgT^{\\dagger} = g$"""
     n = M.shape[0]//2
     
     vals, vecs = np.linalg.eig(M)
@@ -148,7 +148,7 @@ def bogoliubov(M):
     return x
 
 def plot_matter_content():
-    # light, matter resonances
+    # light, matter resonances, PARAMETERS for omega_a, omega_b from [PhysRevLett.112.016401]
     omega_b = 1.
     omega_a = 1. / 1.7
     # chiral coupling
@@ -196,18 +196,58 @@ def compute_energy_transfer(w_p, w_m, t):
        float
     """
 
-    x = bogoliubov(kernel)
+    # t[i, j] => i-th polariton mode receives contribution from j-th matter mode
+    # matter modes here reside at indices 2, 5
+    matter_content = np.abs(t[:, 2])**2
+    matter_content = matter_content[:3] + matter_content[3:]
+
+    # coupling efficiency of external illumination to modes indexed 0,1 => plus, minus
+    w = np.array([w_p, w_m, 0])    
+    u, v = t[:3, :3], t[:3, 3:]
+
+    # return (np.abs(t[2, 0])**2 + np.abs(t[5, 0])**2) / np.linalg.norm(t[:, 0])**2
+    matter_norm  = matter_content / np.linalg.norm(t[:, :3], axis = 0)**2
+    # return matter_content @ np.abs(w @ (u + v))**2
+    return np.sum(np.abs(w @ (u + v))**2)
 
 def plot_energy_transfer():
     # light, matter resonances
     omega_b = 1.
     omega_a = 1. / 1.7
     # chiral coupling
-    g_plus = 0.5 * omega_a
-    g_minus = g_plus
+    g_plus = 0.5 * omega_b
 
+    # Example ranges for gs and ws, assuming they are arrays of values
+    gs = np.linspace(0.01, 1.0, 50)  # range for g values
+    ws = np.linspace(0.01, 1.0, 50)  # range for w values
+
+    w_plus = 1.0  # Example constant value for w_plus
+
+    # Calculate the energy transfer matrix
+    res = [[compute_energy_transfer(w_plus,
+                                     w * w_plus,
+                                     bogoliubov(generate_kernel(omega_a, omega_b, g, g * g_plus)))
+            for w in ws] for g in gs]
+
+    res = np.array(res) 
+
+    # plt.plot(gs, res[:, 0])
+    # plt.show()
+    # 1/0
     
+    # Plot the real part of the matrix res
+    res /= res.max()
+
+    plt.figure(figsize=(8, 6))
+    plt.imshow(np.real(res), extent=[ws.min(), ws.max(), gs.min(), gs.max()],
+               origin='lower', aspect='auto', cmap='viridis', interpolation='sinc')
+    plt.colorbar(label='Real(Energy Transfer)')
+    plt.xlabel('w values')
+    plt.ylabel('g values')
+    plt.title('2D Plot of Energy Transfer (Real Part)')
+    plt.show()
+    plt.close()        
 
 if __name__ == '__main__':
-    plot_matter_content()
-    compute_energy_transfer()
+    # plot_matter_content()
+    plot_energy_transfer()
