@@ -48,16 +48,15 @@ def test_pra():
         
 def generate_kernel(omega_a, omega_b, g_plus, g_minus):
     """
-    Constructs the kernel
+    Constructs the kernel. The vector ordering is $\begin{pmatrix} a a^{\dagger} \end{pmatrix}$, where $a = \begin{pmatrix} a_+ a_- b \end{pmatrix}$.
+
+    The coupling parameters are light/matter eigenfrequencies and "paramagnetic" coupling constants. The corresponding diamagnetic couplings are computed following PhysRevA.74.033811.
 
     Parameters:
-        omega_a: Parameter omega_a.
-        omega_b: Parameter omega_b.
-        Omega: Parameter Omega.
-        Omega_plus: Parameter Omega_+.
-        Omega_minus: Parameter Omega_-.
-        g_plus: Parameter g_+.
-        g_minus: Parameter g_-.
+        omega_a: Degenerate eigenfrequency omega_a of cavity modes
+        omega_b: Eigenfrequency of isolated bosonic matter excitation
+        g_plus: Coupling between positively helical light and matter
+        g_minus: Coupling between negatively helical light and matter
 
     Returns:
         A 6x6 numpy matrix.
@@ -120,6 +119,7 @@ def generate_kernel(omega_a, omega_b, g_plus, g_minus):
     return M
 
 def bogoliubov(M):
+    """bogoliubov transformation matrix for a kernel M"""
     n = M.shape[0]//2
     
     vals, vecs = np.linalg.eig(M)
@@ -143,7 +143,7 @@ def bogoliubov(M):
     x[:, :n] /= np.sqrt(np.diag(res)[:n])
     x[:, n:] /= np.sqrt(np.diag(res)[:n])
     res = x @ G @ x.T    
-    print(np.round(res, 2))
+    # print(np.round(res, 2))
     
     return x
 
@@ -196,9 +196,17 @@ def compute_energy_transfer(w_p, w_m, t):
        float
     """
 
-    omega_a, omega_b = 1., 1.    
-    kernel = generate_kernel(omega_a, omega_b, g_plus, g_minus)
-    x = bogoliubov(kernel)            
+    x = bogoliubov(kernel)
+
+def plot_energy_transfer():
+    # light, matter resonances
+    omega_b = 1.
+    omega_a = 1. / 1.7
+    # chiral coupling
+    g_plus = 0.5 * omega_a
+    g_minus = g_plus
+
+    
 
 if __name__ == '__main__':
     plot_matter_content()
