@@ -2,7 +2,11 @@ import numpy as np
 import scipy
 import matplotlib.pyplot as plt
 
-# TODO : why exactly omega_a != omega_b is there some singularity?
+# TODO: wtf am I seeing in relative deposited power?
+# TODO: how to relate A coupling to dipole coupling? [done in carsten paper] => some realistic values by combining with [ACS]
+# DONE : why exactly omega_a != omega_b is there some singularity? Probably not, this is likely just a resonance effect (cavity likes matter => both hybridize already at low frequencies)
+# DONE is there bug in bogoliubov when we only vary first arg? No, this is just some ordering issue I will not bother to solve. plotting all modes alleviates this problem.
+# DONE: n^{1/2} scaling of coupling also from PRA
 
 # chosen vals from paper: w_b = w_a, freq-independent rates g_a = 0.04 w_a, g_b = 0.08 w_a
 # plot abs(w) for varying values of g_+ / g_-, c_+ / c_-
@@ -64,7 +68,7 @@ def generate_kernel(omega_a, omega_b, g_plus, g_minus):
     Omega = g_plus * g_minus / omega_b
     Omega_plus = g_plus**2 / omega_b
     Omega_minus = g_minus**2 / omega_b
-    
+
     # Matrix components
     M = np.zeros((6, 6), dtype=complex)
 
@@ -122,7 +126,8 @@ def bogoliubov(M):
     """bogoliubov transformation matrix $T$ for a kernel M, i.e. the matrix that diagonalizes $H = Ma a^{\\dagger}$ via $a' = T a$ obeying $TgT^{\\dagger} = g$"""
     n = M.shape[0]//2
     
-    vals, vecs = np.linalg.eig(M)
+    vals, vecs = np.linalg.eig(M)    
+
     positive = np.argwhere(vals >= 0).squeeze()
     vecs = vecs[:, positive]
     ordered = np.argsort(vals[positive])
@@ -130,6 +135,7 @@ def bogoliubov(M):
     lower_part = np.concatenate([vecs[n:], vecs[:n]])
     
     T = np.zeros((2*n,2*n))
+
     T[:, n:] = lower_part
     T[:, :n] = vecs
 
@@ -147,10 +153,10 @@ def bogoliubov(M):
     
     return x
 
-def plot_matter_content():
+def plot_matter_content(debug = False):
     # light, matter resonances, PARAMETERS for omega_a, omega_b from [PhysRevLett.112.016401]
     omega_b = 1.
-    omega_a = 1. / 1.7
+    omega_a = 1. / 1.1
     # chiral coupling
     g_plus = 0.5 * omega_a
     g_minus = g_plus
@@ -160,13 +166,26 @@ def plot_matter_content():
     gs = np.linspace(0.01, 10, 1000)    
     for a in [0.0, 0.1, 0.8]:
         res = []
+
+        res_db = []
         for g in gs:        
-            kernel = kernel_func(g, g*a)
+            kernel = kernel_func(g, g * a)
             x = bogoliubov(kernel)            
             content = (np.abs(x[2, 0])**2 + np.abs(x[5, 0])**2) / np.linalg.norm(x[:, 0])**2
             res.append(content)
+
+            # check for different enantiomer
+            # some ordering issue mismatches polariton modes between chiralities, so the first - mode might be the second + mode and so obn
+            if debug:
+                kernel = kernel_func(g * a, g)
+                x = bogoliubov(kernel)
+                i = 1
+                content = (np.abs(x[2, i])**2 + np.abs(x[5, i])**2) / np.linalg.norm(x[:, i])**2
+                res_db.append(content)
             
         plt.plot(gs, res, label = r'$\frac{g_-}{g_+}$ = ' + f'{a}')
+        if debug:
+            plt.plot(gs, res_db, label = r'$\frac{g_-}{g_+}$ = ' + f'{a}')
         plt.xscale('log')
 
     # Add vertical lines and labels at specified x-axis positions
@@ -204,11 +223,26 @@ def compute_energy_transfer(w_p, w_m, t):
     # coupling efficiency of external illumination to modes indexed 0,1 => plus, minus
     w = np.array([w_p, w_m, 0])    
     u, v = t[:3, :3], t[:3, 3:]
+    # import pdb; pdb.set_trace()
 
     # return (np.abs(t[2, 0])**2 + np.abs(t[5, 0])**2) / np.linalg.norm(t[:, 0])**2
     matter_norm  = matter_content / np.linalg.norm(t[:, :3], axis = 0)**2
-    # return matter_content @ np.abs(w @ (u + v))**2
-    return np.sum(np.abs(w @ (u + v))**2)
+    # import pdb; pdb.set_trace()
+    return matter_content @ np.abs(w @ (u + v))**2
+    # return np.sum(np.abs(w @ (u + v))**2)
+
+def transfer_difference(omega_a, omega_b, w, wm, g, gm):
+    # energy transferred to excess "plus"
+    tp = compute_energy_transfer(w,
+                                 wm,
+                                 bogoliubov(generate_kernel(omega_a, omega_b, g, gm)))
+
+    # energy transferred to excess "minus"
+    tm = compute_energy_transfer(w,
+                                 wm,
+                                 bogoliubov(generate_kernel(omega_a, omega_b, gm, g)))
+
+    return tp - tm
 
 def plot_energy_transfer():
     # light, matter resonances
@@ -224,10 +258,7 @@ def plot_energy_transfer():
     w_plus = 1.0  # Example constant value for w_plus
 
     # Calculate the energy transfer matrix
-    res = [[compute_energy_transfer(w_plus,
-                                     w * w_plus,
-                                     bogoliubov(generate_kernel(omega_a, omega_b, g, g * g_plus)))
-            for w in ws] for g in gs]
+    res = [[transfer_difference(omega_a, omega_b, w_plus, w * w_plus, g, g * g_plus) for w in ws] for g in gs]
 
     res = np.array(res) 
 
@@ -241,7 +272,7 @@ def plot_energy_transfer():
     plt.figure(figsize=(8, 6))
     plt.imshow(np.real(res), extent=[ws.min(), ws.max(), gs.min(), gs.max()],
                origin='lower', aspect='auto', cmap='viridis', interpolation='sinc')
-    plt.colorbar(label='Real(Energy Transfer)')
+    plt.colorbar(label='Energy Transfer')
     plt.xlabel('w values')
     plt.ylabel('g values')
     plt.title('2D Plot of Energy Transfer (Real Part)')
