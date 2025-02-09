@@ -174,41 +174,16 @@ def generate_kernel(omega_a, omega_b, g_plus, g_minus, n_plus = 1, n_minus = 0, 
 # => T^{\dagger} (GH) T diagonalizes, so T : matter, light => polaritons
 # so we need T^{-1} : polaritons => matter, light
 # construct by taking the positive eigenvectors
-def renormalize_inv(inv: np.ndarray, G: np.ndarray) -> np.ndarray:
-    """
-    Renormalizes the inverse matrix `inv` so that:
-        inv_new @ G @ inv_new.T == I
-    
-    Parameters:
-    inv (np.ndarray): Initial inverse matrix (n x n)
-    G (np.ndarray): Given matrix (n x n)
-    
-    Returns:
-    np.ndarray: Renormalized inverse matrix
-    """
-    # Compute the deviation matrix
-    res = inv @ G @ inv.T
-    
-    # Eigen decomposition of res
-    eigvals, eigvecs = np.linalg.eig(res)  # res = U @ Λ @ U.T
-    
-    # Compute inverse square root of eigenvalues
-    inv_sqrt_eigvals = np.diag(1.0 / np.sqrt(eigvals))
-    
-    # Compute res^(-1/2) = U @ Λ^(-1/2) @ U.T
-    res_inv_sqrt = eigvecs @ inv_sqrt_eigvals @ eigvecs.T
-    
-    # Compute renormalized inverse matrix
-    inv_new = inv @ res_inv_sqrt
-    
-    return inv_new
-
 def bogoliubov(M, ret_vals = False):
     """bogoliubov transformation matrix $T$ for a kernel M, i.e. the matrix that diagonalizes $H = Ma a^{\\dagger}$ via $a' = T a$ obeying $TgT^{\\dagger} = g$"""
+
+    # hilbert space dim (M is twice as large)
     n = M.shape[0]//2
-    
+
+    # "metric"
     G = np.diag([1 if i < n else -1 for i in range(2*n)])
 
+    # diagonalize
     energies, vecs = np.linalg.eig(M)    
 
     # positive (ev dist symmetric around zero)
@@ -250,48 +225,35 @@ def bogoliubov(M, ret_vals = False):
     return inv
 
 def plot_matter_content(debug = False):
+    
+    def get_matter_content(omega_a, omega_b, gp, gm, matter_idxs, polariton_idx):        
+        kernel = generate_kernel(omega_a, omega_b, gp, gm)
+        x = bogoliubov(kernel)
+        return (np.abs(x[matter_idxs, polariton_idx])**2).sum() / np.linalg.norm(x[:, polariton_idx])**2
+
     # light, matter resonances, PARAMETERS for omega_a, omega_b from [PhysRevLett.112.016401]
     omega_b = 1.
     omega_a = 1. / 1.1
-    # chiral coupling
-    g_plus = 0.5 * omega_a
-    g_minus = g_plus
     
-    kernel_func = lambda gp, gm : generate_kernel(omega_a, omega_b, gp, gm)
+    # chiral coupling    
+    couplings = np.logspace(-2, 1, 20) # 0.01 => 10
+    chiralities = [0, 0.1, 0.8]
 
-    gsmall = jnp.diag( jnp.array([1, 1, 1, -1, -1, -1]) )
-    glarge = jnp.diag( jnp.array([1, 1, 1, 1, -1, -1, -1, -1 ]) )
 
-    polariton_energy_state_idx = 0
-    
-    gs = np.linspace(0.01, 10, 10)    
-    for a in [0.0, 0.1, 0.8]:
-        res = []
+    # matter indices
+    matter = [2, 6]
+    matter = [3, 7]
 
-        res_db = []
-        for g in gs:        
-            kernel = kernel_func(g, g * a)
+    # import pdb; pdb.set_trace()
+    # generate_kernel(omega_a, omega_b, 1., 0.
 
-            x = bogoliubov(kernel)
+    # polariton energy branch
+    polariton = 1
+    res = [ [get_matter_content(omega_a, omega_b, g, g*chi, matter, polariton) for g in couplings] for chi in chiralities ]
 
-            i = polariton_energy_state_idx
-            # content = (np.abs(x[3, i])**2 + np.abs(x[7, i])**2) / np.linalg.norm(x[:, i])**2
-            content = (np.abs(x[2, i])**2 + np.abs(x[5, i])**2) / np.linalg.norm(x[:, i])**2
-            res.append(content)
-
-            # check for different enantiomer
-            # some ordering issue mismatches polariton modes between chiralities, so the first - mode might be the second + mode and so obn
-            if debug:
-                kernel = kernel_func(g * a, g)
-                x = bogoliubov(kernel)
-                i = 1
-                content = (np.abs(x[2, i])**2 + np.abs(x[5, i])**2) / np.linalg.norm(x[:, i])**2
-                res_db.append(content)
-            
-        plt.plot(gs, res, label = r'$\frac{g_-}{g_+}$ = ' + f'{a}')
-        if debug:
-            plt.plot(gs, res_db, label = r'$\frac{g_-}{g_+}$ = ' + f'{a}')
-        plt.xscale('log')
+    for i, chi in enumerate(chiralities):        
+        plt.plot(couplings, res[i], label = r'$\frac{g_-}{g_+}$ = ' + f'{chi}')
+    plt.xscale('log')
 
     # Add vertical lines and labels at specified x-axis positions
     coupling_points = [0.1, 0.5, 1]
@@ -301,9 +263,9 @@ def plot_matter_content(debug = False):
         plt.axvline(x=point, color='black', linestyle='--', alpha=0.7)  # Vertical line
         plt.text(point, 1.05, label, rotation=10, fontsize=8, ha='right', va='bottom')  # Label above        
 
-    plt.fill_between(gs, 0.2, 0.8, color='gray', alpha=0.5, label='Strong Hybridization')
+    plt.fill_between(couplings, 0.2, 0.8, color='gray', alpha=0.5, label='Strong Hybridization')
     plt.xlabel(r"$\dfrac{g_+}{\omega_b}$")
-    plt.ylabel("Matter Content in Lowest Polariton Mode")
+    plt.ylabel("Matter Content")
     plt.legend()        
     plt.savefig("matter_content.pdf")
     plt.close()
