@@ -54,78 +54,6 @@ def test_pra():
     plt.savefig("pra_matter_content.pdf")
     plt.close()
 
-def generate_kernel_old(omega_a, omega_b, g_plus, g_minus):
-    """
-    Constructs the kernel. The vector ordering is $\begin{pmatrix} a a^{\dagger} \end{pmatrix}$, where $a = \begin{pmatrix} a_+ a_- b \end{pmatrix}$.
-
-    The coupling parameters are light/matter eigenfrequencies and "paramagnetic" coupling constants. The corresponding diamagnetic couplings are computed following PhysRevA.74.033811.
-
-    Parameters:
-        omega_a: Degenerate eigenfrequency omega_a of cavity modes
-        omega_b: Eigenfrequency of isolated bosonic matter excitation
-        g_plus: Coupling between positively helical light and matter
-        g_minus: Coupling between negatively helical light and matter
-
-    Returns:
-        A 6x6 numpy matrix.
-    """
-    Omega = g_plus * g_minus / omega_b
-    Omega_plus = g_plus**2 / omega_b
-    Omega_minus = g_minus**2 / omega_b
-
-    # Matrix components
-    M = np.zeros((6, 6), dtype=complex)
-
-    # First row
-    M[0, 0] = omega_a + 2 * Omega_plus
-    M[0, 1] = 2 * Omega
-    M[0, 2] = g_plus
-    M[0, 3] = 2 * Omega_plus
-    M[0, 4] = 2 * Omega
-    M[0, 5] = g_plus
-
-    # Second row
-    M[1, 0] = 2 * Omega
-    M[1, 1] = omega_a + 2 * Omega_minus
-    M[1, 2] = g_minus
-    M[1, 3] = 2 * Omega
-    M[1, 4] = 2 * Omega_minus
-    M[1, 5] = g_minus
-
-    # Third row
-    M[2, 0] = g_plus
-    M[2, 1] = g_minus
-    M[2, 2] = omega_b
-    M[2, 3] = g_plus
-    M[2, 4] = g_minus
-    M[2, 5] = 0
-
-    # Fourth row
-    M[3, 0] = -2 * Omega_plus
-    M[3, 1] = -2 * Omega
-    M[3, 2] = -g_plus
-    M[3, 3] = -omega_a - 2 * Omega_plus
-    M[3, 4] = -2 * Omega
-    M[3, 5] = -g_plus
-
-    # Fifth row
-    M[4, 0] = -2 * Omega
-    M[4, 1] = -2 * Omega_minus
-    M[4, 2] = -g_minus
-    M[4, 3] = -2 * Omega
-    M[4, 4] = -omega_a - 2 * Omega_minus
-    M[4, 5] = -g_minus
-
-    # Sixth row
-    M[5, 0] = -g_plus
-    M[5, 1] = -g_minus
-    M[5, 2] = 0
-    M[5, 3] = -g_plus
-    M[5, 4] = -g_minus
-    M[5, 5] = -omega_b
-
-    return M
-
         
 def generate_kernel(omega_a, omega_b, g_plus, g_minus, n_plus = 1, n_minus = 0, diamagnetic = True):
     """
@@ -330,7 +258,6 @@ def plot_matter_content(debug = False):
     g_minus = g_plus
     
     kernel_func = lambda gp, gm : generate_kernel(omega_a, omega_b, gp, gm)
-    kernel_old_func = lambda gp, gm : generate_kernel_old(omega_a, omega_b, gp, gm)
 
     gsmall = jnp.diag( jnp.array([1, 1, 1, -1, -1, -1]) )
     glarge = jnp.diag( jnp.array([1, 1, 1, 1, -1, -1, -1, -1 ]) )
