@@ -3,7 +3,6 @@ import jax.numpy as jnp
 import scipy
 import matplotlib.pyplot as plt
 
-# TODO: bogoliubov is kaputt
 # TODO: racemic (=1:1) case with both enantiomers present
 # TODO: wtf am I seeing in relative deposited power?
 # TODO: clarify what boundary conditions the semiclassical approximation corresponds to, i.e. we have sth like H_int = \int dw W_ij(w) a_i c_j(w) + h.c. and take c classical, i.e. our interaction term should be sth like F.T. <W_ij(w) c_j(w)> => W_ij(t) * <c_j(t)>, which makes only sense if we assume non-dispersive couplings, but we can cope with this analogous to [PhysRevA.74.033811.pdf]
@@ -167,6 +166,10 @@ def generate_kernel(omega_a, omega_b, g_plus, g_minus, n_plus = 1, n_minus = 0, 
 
     return M
 
+# debug printing
+def rp(mat):
+    print(mat.real.round(1))        
+
 # bosonic bogoliubov
 # G = diag(1, -1)
 # diagonalize G H
@@ -174,8 +177,15 @@ def generate_kernel(omega_a, omega_b, g_plus, g_minus, n_plus = 1, n_minus = 0, 
 # => T^{\dagger} (GH) T diagonalizes, so T : matter, light => polaritons
 # so we need T^{-1} : polaritons => matter, light
 # construct by taking the positive eigenvectors
-def bogoliubov(M, ret_vals = False):
-    """bogoliubov transformation matrix $T$ for a kernel M, i.e. the matrix that diagonalizes $H = Ma a^{\\dagger}$ via $a' = T a$ obeying $TgT^{\\dagger} = g$"""
+def bogoliubov(M):
+    """bogoliubov transformation matrix $T$ for a kernel M, i.e. the matrix that diagonalizes $H = Ma a^{\\dagger}$ via $a' = T a$ obeying $TgT^{\\dagger} = g$
+
+    returns
+
+    trafo: indexed by N_orig x N_polaritons
+    inverse: trafo, indexed by N_polaritons x N_orig
+    energies :    
+    """
 
     # hilbert space dim (M is twice as large)
     n = M.shape[0]//2
@@ -211,6 +221,9 @@ def bogoliubov(M, ret_vals = False):
     inv_left = np.concatenate([x[:n].T, -x[n:].T])
     inv_right = np.concatenate([-x[n:].T, x[:n].T])
     inv = np.concatenate( [inv_left, inv_right], axis = 1)
+    
+    # alternatively lol: inv = G @ T.T @ G
+    # T fulfills T.T @ G @ M @ T = Omega > 0
 
     # pseudo-unitarity
     res = inv @ G @ inv.T    
@@ -220,15 +233,13 @@ def bogoliubov(M, ret_vals = False):
         print("Not pseudo-unitary")
         import pdb; pdb.set_trace()
     
-    if ret_vals == True:
-        return inv, energies
-    return inv
+    return {"trafo" : T, "inverse" : inv, "energies" : energies}
 
-def plot_matter_content(debug = False):
+def plot_matter_content():
     
     def get_matter_content(omega_a, omega_b, gp, gm, matter_idxs, polariton_idx):        
-        kernel = generate_kernel(omega_a, omega_b, gp, gm)
-        x = bogoliubov(kernel)
+        kernel = generate_kernel(omega_a, omega_b, gp, gm)        
+        x = bogoliubov(kernel)["trafo"]
         return (np.abs(x[matter_idxs, polariton_idx])**2).sum() / np.linalg.norm(x[:, polariton_idx])**2
 
     # light, matter resonances, PARAMETERS for omega_a, omega_b from [PhysRevLett.112.016401]
@@ -239,18 +250,14 @@ def plot_matter_content(debug = False):
     couplings = np.logspace(-2, 1, 20) # 0.01 => 10
     chiralities = [0, 0.1, 0.8]
 
-
     # matter indices
     matter = [2, 6]
-    matter = [3, 7]
-
-    # import pdb; pdb.set_trace()
-    # generate_kernel(omega_a, omega_b, 1., 0.
 
     # polariton energy branch
-    polariton = 1
+    polariton = 0
     res = [ [get_matter_content(omega_a, omega_b, g, g*chi, matter, polariton) for g in couplings] for chi in chiralities ]
 
+    # plot matter contents
     for i, chi in enumerate(chiralities):        
         plt.plot(couplings, res[i], label = r'$\frac{g_-}{g_+}$ = ' + f'{chi}')
     plt.xscale('log')
