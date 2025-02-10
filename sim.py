@@ -3,6 +3,8 @@ import jax.numpy as jnp
 import scipy
 import matplotlib.pyplot as plt
 
+
+# TODO: correct diamagnetism, bc all modes contribute
 # TODO: racemic (=1:1) case with both enantiomers present
 # TODO: wtf am I seeing in relative deposited power?
 # TODO: clarify what boundary conditions the semiclassical approximation corresponds to, i.e. we have sth like H_int = \int dw W_ij(w) a_i c_j(w) + h.c. and take c classical, i.e. our interaction term should be sth like F.T. <W_ij(w) c_j(w)> => W_ij(t) * <c_j(t)>, which makes only sense if we assume non-dispersive couplings, but we can cope with this analogous to [PhysRevA.74.033811.pdf]
@@ -73,7 +75,7 @@ def generate_kernel(omega_a, omega_b, g_plus, g_minus, n_plus = 1, n_minus = 0, 
     """
     Omega = g_plus * g_minus / omega_b * (diamagnetic == True)
     Omega_plus = g_plus**2 / omega_b * (diamagnetic == True)
-    Omega_minus = g_minus**2 / omega_b * (diamagnetic == True)
+    Omega_minus = g_minus**2 / omega_b * (diamagnetic == True)    
 
     # Matrix components
     M = np.zeros((8, 8), dtype=complex)
@@ -123,46 +125,8 @@ def generate_kernel(omega_a, omega_b, g_plus, g_minus, n_plus = 1, n_minus = 0, 
     M[3, 7] = 0    
 
     ## annihilators
-
-    # Fifth row (a^{\dagger}_+)
-    M[4, 0] = -2 * Omega_plus
-    M[4, 1] = -2 * Omega
-    M[4, 2] = -g_plus * n_plus
-    M[4, 3] = -g_minus * n_minus
-    M[4, 4] = -omega_a - 2 * Omega_plus
-    M[4, 5] = -2 * Omega
-    M[4, 6] = -g_plus * n_plus
-    M[4, 7] = -g_minus * n_minus
-
-    # Sixth row (a^{\dagger}_-)
-    M[5, 0] = -2 * Omega
-    M[5, 1] = -2 * Omega_minus
-    M[5, 2] = -g_minus * n_plus
-    M[5, 3] = -g_plus * n_minus
-    M[5, 4] = -2 * Omega
-    M[5, 5] = -omega_a - 2 * Omega_minus
-    M[5, 6] = -g_minus * n_plus
-    M[5, 7] = -g_plus * n_minus
-
-    # Seventh row (b^{\dagger}_+)
-    M[6, 0] = -g_plus * n_plus
-    M[6, 1] = -g_minus * n_plus
-    M[6, 2] = 0
-    M[6, 3] = 0
-    M[6, 4] = -g_plus * n_plus
-    M[6, 5] = -g_minus * n_plus
-    M[6, 6] = -omega_b
-    M[6, 7] = 0
-    
-    # Eigth row (b^{\dagger}_-)
-    M[7, 0] = -g_minus * n_minus
-    M[7, 1] = -g_plus * n_minus
-    M[7, 2] = 0
-    M[7, 3] = 0
-    M[7, 4] = -g_minus * n_minus
-    M[7, 5] = -g_plus * n_minus
-    M[7, 6] = 0
-    M[7, 7] = -omega_b
+    # bogoliubov ham is of the form [ [A, B], [-conj(B), -conj(A)] ]
+    M[4:, :] = np.concatenate((-np.conj(M[:4, 4:]), -np.conj(M[:4, :4])), axis=1)
 
     return M
 
@@ -196,6 +160,8 @@ def bogoliubov(M):
     # diagonalize
     energies, vecs = np.linalg.eig(M)    
 
+    print(energies.imag.max() / energies.real.max())
+    
     # positive (ev dist symmetric around zero)
     positive = np.argsort(energies)[n:]
     
@@ -212,36 +178,29 @@ def bogoliubov(M):
     # T = [x_1, ..., J x_1, ...]
     T = np.concatenate([x, Jx], axis = 1)
 
-    # inverse [ [U^+, -V^+],
-    #           [-conj(V^+), conj(U^+)] ]
-    # as long as real => + => T
-    imag = vecs.imag
-    if np.sum(imag > 1e-12): 
-        print( "problem with imag", np.sum(imag > 1e-12))
-    inv_left = np.concatenate([x[:n].T, -x[n:].T])
-    inv_right = np.concatenate([-x[n:].T, x[:n].T])
-    inv = np.concatenate( [inv_left, inv_right], axis = 1)
-    
-    # alternatively lol: inv = G @ T.T @ G
-    # T fulfills T.T @ G @ M @ T = Omega > 0
+    # inverse = G T^{\dagger} G
+    inv = G @ T.T @ G
 
     # pseudo-unitarity
-    res = inv @ G @ inv.T    
-    diff = jnp.linalg.norm(res  - G)
-    print(diff)
-    if diff > 0.9:
-        print("Not pseudo-unitary")
-        import pdb; pdb.set_trace()
+    diff1 = jnp.linalg.norm(inv @ G @ inv.T - G)
     
+    # T fulfills T.conj().T @ G @ M @ T = Omega > 0
+    diff2 = jnp.linalg.norm(T.T @ G @ M @ T - jnp.diag(jnp.concatenate([energies[positive], energies[positive]])))
+    
+    if diff1 > 0.9 or diff2 > 0.9:
+        import pdb; pdb.set_trace()
+        print("Not pseudo-unitary")
+
+
     return {"trafo" : T, "inverse" : inv, "energies" : energies}
+
+def get_matter_content(omega_a, omega_b, gp, gm, matter_idxs, polariton_idx, n_minus):        
+    kernel = generate_kernel(omega_a, omega_b, gp, gm, n_minus = n_minus)        
+    x = bogoliubov(kernel)["trafo"]
+    return (np.abs(x[matter_idxs, polariton_idx])**2).sum() / np.linalg.norm(x[:, polariton_idx])**2
 
 def plot_matter_content():
     
-    def get_matter_content(omega_a, omega_b, gp, gm, matter_idxs, polariton_idx):        
-        kernel = generate_kernel(omega_a, omega_b, gp, gm)        
-        x = bogoliubov(kernel)["trafo"]
-        return (np.abs(x[matter_idxs, polariton_idx])**2).sum() / np.linalg.norm(x[:, polariton_idx])**2
-
     # light, matter resonances, PARAMETERS for omega_a, omega_b from [PhysRevLett.112.016401]
     omega_b = 1.
     omega_a = 1. / 1.1
@@ -249,33 +208,52 @@ def plot_matter_content():
     # chiral coupling    
     couplings = np.logspace(-2, 1, 20) # 0.01 => 10
     chiralities = [0, 0.1, 0.8]
+    chiralities = [0.] 
 
     # matter indices
-    matter = [2, 6]
+    matter = [ [2, 6], [3, 7] ]
+    matter_labels = ["+", "-"]
+    matter_ls = ['-', '--']
 
-    # polariton energy branch
-    polariton = 0
-    res = [ [get_matter_content(omega_a, omega_b, g, g*chi, matter, polariton) for g in couplings] for chi in chiralities ]
+    # proportion of opposite helicity material
+    content_minus = [0, 0.1, 0.5, 1.]
+    content_minus = [1.]
+    
+    # polariton energy branch    
+    polaritons = range(8)
+    for polariton in polaritons:
 
-    # plot matter contents
-    for i, chi in enumerate(chiralities):        
-        plt.plot(couplings, res[i], label = r'$\frac{g_-}{g_+}$ = ' + f'{chi}')
-    plt.xscale('log')
+        res = [
+            [
+                [
+                    [
+                        get_matter_content(omega_a, omega_b, g, g*chi, m, polariton, n_minus)
+                    for g in couplings]
+                for m in matter]
+                for chi in chiralities]
+            for n_minus in content_minus]
 
-    # Add vertical lines and labels at specified x-axis positions
-    coupling_points = [0.1, 0.5, 1]
-    coupling_labels = ['Strong', 'Ultra', 'Deep']
+        # plot matter contents
+        for l, n in enumerate(content_minus):
+            for i, chi in enumerate(chiralities):
+                for j, m in enumerate(matter):
+                    plt.plot(couplings, res[l][i][j], matter_ls[j], label = rf'$g_- / g_+$, % = {chi}, {content_minus[l]}')
+        plt.xscale('log')
 
-    for point, label in zip(coupling_points, coupling_labels):
-        plt.axvline(x=point, color='black', linestyle='--', alpha=0.7)  # Vertical line
-        plt.text(point, 1.05, label, rotation=10, fontsize=8, ha='right', va='bottom')  # Label above        
+        # Add vertical lines and labels at specified x-axis positions
+        coupling_points = [0.1, 0.5, 1]
+        coupling_labels = ['Strong', 'Ultra', 'Deep']
 
-    plt.fill_between(couplings, 0.2, 0.8, color='gray', alpha=0.5, label='Strong Hybridization')
-    plt.xlabel(r"$\dfrac{g_+}{\omega_b}$")
-    plt.ylabel("Matter Content")
-    plt.legend()        
-    plt.savefig("matter_content.pdf")
-    plt.close()
+        for point, label in zip(coupling_points, coupling_labels):
+            plt.axvline(x=point, color='black', linestyle='--', alpha=0.7)  # Vertical line
+            plt.text(point, 1.05, label, rotation=10, fontsize=8, ha='right', va='bottom')  # Label above        
+
+        plt.fill_between(couplings, 0.2, 0.8, color='gray', alpha=0.5, label='Strong Hybridization')
+        plt.xlabel(r"$\dfrac{g_+}{\omega_b}$")
+        plt.ylabel("Matter Content")
+        plt.legend()        
+        plt.savefig(f"matter_content_{polariton}.pdf")
+        plt.close()
 
 def plot_energies():
     omega_b = 1.
@@ -372,14 +350,7 @@ def plot_energy_transfer():
     res = [[transfer_difference(omega_a, omega_b, w_plus, w * w_plus, g_plus, g * g_plus) for w in ws] for g in gs]
 
     res = np.array(res)
-
-    # plt.plot(gs, res[:, 0])
-    # plt.show()
-    # 1/0
     
-    # Plot the real part of the matrix res
-    # res /= res.max()
-
     plt.figure(figsize=(8, 6))
     interpolation = 'sinc'
     # interpolation = None #'sinc'
