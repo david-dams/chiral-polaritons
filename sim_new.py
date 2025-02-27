@@ -3,9 +3,12 @@ import jax.numpy as jnp
 
 import matplotlib.pyplot as plt
 
+# TODO: static case: (damping, fraction_minus (?)) ~ delta_{+-}
+# TODO: static case: (damping, fraction_minus (?)) ~ matter content (+-) in lowest polariton mode
+# TODO: dynamic analysis: (c_+/-, fraction_minus) ~ energy deposited
+
 # TODO: compare hopfield RWA and full
-# TODO: energy transfer
-# TODO: knobs to tune: g, w_+/-, w_b, fraction_minus, c_+/-
+# TODO: knobs to tune: g, w_+/-, w_b, fraction_minus, c_+/-, damping
 
 def hamiltonian(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus = 0, diamagnetic = True, anti_res = False, damping = 1.):
     """
@@ -240,3 +243,4 @@ def test_jpcl():
 
     
 # test_prl(); test_jpcl()
+
