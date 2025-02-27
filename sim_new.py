@@ -3,8 +3,11 @@ import jax.numpy as jnp
 
 import matplotlib.pyplot as plt
 
-# TODO: hopfield RWA and full
-def hamiltonian(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus = 0, diamagnetic = True, anti_res = False):
+# TODO: compare hopfield RWA and full
+# TODO: energy transfer
+# TODO: knobs to tune: g, w_+/-, w_b, fraction_minus, c_+/-
+
+def hamiltonian(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus = 0, diamagnetic = True, anti_res = False, damping = 1.):
     """
     Constructs the Hamiltonian for a two-mode (plus, minus) cavity coupled to a matter mode, incorporating chiral 
     paramagnetic and diamagnetic couplings, with options for the rotating wave approximation (RWA).
@@ -16,7 +19,7 @@ def hamiltonian(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus 
     - \(i, n\) index the cavity and matter modes.
     - Matter modes are assumed degenerate.
     - \(g_{in}\) and \(D_{ij}\) are chiral paramagnetic and diamagnetic couplings.
-    - The coupling strength is influenced by the fraction of negative enantiomers (\(\text{fraction_minus}\)).
+    - The coupling strength is influenced by the fraction of negative enantiomers.
     - Diamagnetic interactions contribute to self-interaction terms.
 
     Parameters:
@@ -30,13 +33,15 @@ def hamiltonian(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus 
     g : float
         Chiral paramagnetic coupling constant.
     scale : float
-        scale of the interaction strength (default=1).
+        scale of the interaction strength (default=1), roughly ~ \sqrt{N_+}
     fraction_minus : float, optional (default=0)
-        Fraction of negative enantiomers, scaling the coupling asymmetry.
+        Fraction of negative enantiomers, scaling the coupling asymmetry, roughly ~ $\sqrt{N_-/ N_+}$
     diamagnetic : bool, optional (default=True)
         If True, includes the diamagnetic coupling contributions.
     anti_res : bool, optional (default=False)
         If False, applies the rotating wave approximation (RWA), neglecting antiresonant terms.
+    damping : float, optional (default=1)
+        Damping of the negative helicity mode
 
     Returns:
     -------
@@ -45,13 +50,14 @@ def hamiltonian(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus 
         self-interactions, and optional diamagnetic contributions.
     """
 
-    # magnetic couplings
+    # magnetic couplings, interaction ~ (g_+, g_- \sqrt{N_- / N_+}) \sqrt{N_+}
     g_matrix = jnp.array( [
         [1 + g, 1 - g ],
         [1 - g, 1 + g ]
         ]
     ) * jnp.array( [1, fraction_minus] ) * scale
-    
+    dampings = jnp.array( [1, damping] )    
+    g_matrix *= dampings[:, None]
     diamagnetic = 2 * g_matrix.sum(axis = 1) * g_matrix.sum(axis = 1)[:, None]  / omega_b * (diamagnetic == True)
     
     # coupling is (c+ c) M (c c+) with c = (a+ a- b+ b-)
@@ -89,10 +95,10 @@ def hamiltonian(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus 
 
     return hamiltonian
     
-def kernel(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus = 0, diamagnetic = True, anti_res = True):
+def kernel(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus = 0, diamagnetic = True, anti_res = True, damping = 1.):
     """kernel for bogoliubov trafo"""
 
-    ham = hamiltonian(omega_plus, omega_minus, omega_b, g, scale, fraction_minus, diamagnetic, anti_res)
+    ham = hamiltonian(omega_plus, omega_minus, omega_b, g, scale, fraction_minus, diamagnetic, anti_res, damping)
     # import pdb; pdb.set_trace()
     N = ham.shape[0]    
     metric = jnp.diag(jnp.concatenate([jnp.ones( N // 2), -jnp.ones( N // 2)]))
@@ -159,7 +165,7 @@ def bogoliubov(M):
     return {"trafo" : T, "inverse" : inv, "energies" : energies}
 
 ## reproduction 
-def test_pra():
+def test_prl():
     # DOI: 10.1103/PhysRevLett.112.016401
     # shows decoupling of polaritons into pure matter / pure light excitations when light-matter coupling is strong enough, bc A^2 term dominates there and this minimizes it
     omega_c = 1/1.7
@@ -204,20 +210,10 @@ def test_jpcl():
         # corresponds to different enantiomers placed separately into perfectly chiral cavity at resonance
 
         # "reproduce" by zeroing out one mode, setting negative coupling to this mode for other chirality    
-        k_plus = kernel(omega_c, omega_c, omega, g = g, scale = s, diamagnetic = True, anti_res = True)
-        # zero out - mode
-        k_plus = k_plus.at[1, :].set(0)
-        k_plus = k_plus.at[:, 1].set(0)
-        k_plus = k_plus.at[5, :].set(0)
-        k_plus = k_plus.at[:, 5].set(0)        
+        k_plus = kernel(omega_c, 0, omega, g = g, scale = s, diamagnetic = True, anti_res = True, damping = 0)
         energies_plus = bogoliubov(k_plus)["energies"]
 
-        k_minus = kernel(omega_c, omega_c, omega, g = -g, scale = s, diamagnetic = True, anti_res = True)
-        # zero out - mode
-        k_minus = k_minus.at[1, :].set(0)
-        k_minus = k_minus.at[:, 1].set(0)
-        k_minus = k_minus.at[5, :].set(0)
-        k_minus = k_minus.at[:, 5].set(0)
+        k_minus = kernel(omega_c, 0, omega, g = -g, scale = s, diamagnetic = True, anti_res = True, damping = 0)
         energies_minus = bogoliubov(k_minus)["energies"]
 
         # energies come in pairs, one of them ios decoupled => 0
@@ -243,3 +239,4 @@ def test_jpcl():
     plt.show()
 
     
+# test_prl(); test_jpcl()
