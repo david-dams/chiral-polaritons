@@ -45,7 +45,7 @@ def test_pra():
         M[3,2] = -Omega
         M[3,3] = -omega_c - 2*Omega**2
 
-        x = bogoliubov(M)        
+        x = bogoliubov(M)["trafo"]
         content  = (np.abs(x[0, 0])**2 + np.abs(x[2, 0])**2) / np.linalg.norm(x[:, 0])**2
         dummy.append(content)
         
@@ -85,22 +85,22 @@ def generate_kernel(omega_a, omega_b, g_plus, g_minus, n_plus = 1, n_minus = 0, 
     ## creators    
     
     # First row (a_+)
-    M[0, 0] = omega_a + 2 * Omega_plus
+    M[0, 0] = omega_a + 2 * Omega_plus + 2 * Omega_minus
     M[0, 1] = 2 * Omega
     M[0, 2] = g_plus * n_plus
     M[0, 3] = g_minus * n_minus
-    M[0, 4] = 2 * Omega_plus
+    M[0, 4] = 2 * Omega_plus + 2 * Omega_minus
     M[0, 5] = 2 * Omega
     M[0, 6] = g_plus * n_plus
     M[0, 7] = g_minus * n_minus
 
     # Second row (a_-)
     M[1, 0] = 2 * Omega
-    M[1, 1] = omega_a + 2 * Omega_minus
+    M[1, 1] = omega_a + 2 * Omega_minus + 2 * Omega_plus
     M[1, 2] = g_minus * n_plus
     M[1, 3] = g_plus * n_minus
     M[1, 4] = 2 * Omega
-    M[1, 5] = 2 * Omega_minus
+    M[1, 5] = 2 * Omega_minus + 2 * Omega_plus
     M[1, 6] = g_minus * n_plus
     M[1, 7] = g_plus * n_minus
 
@@ -188,8 +188,8 @@ def bogoliubov(M):
     diff2 = jnp.linalg.norm(T.T @ G @ M @ T - jnp.diag(jnp.concatenate([energies[positive], energies[positive]])))
     
     if diff1 > 0.9 or diff2 > 0.9:
-        import pdb; pdb.set_trace()
-        print("Not pseudo-unitary")
+        # import pdb; pdb.set_trace()
+        print("Not pseudo-unitary", diff1, diff2)
 
 
     return {"trafo" : T, "inverse" : inv, "energies" : energies}
