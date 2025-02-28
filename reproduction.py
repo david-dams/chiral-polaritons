@@ -15,9 +15,9 @@ def test_prl():
 
     def get_matter_content(s):
         # corresponds to single matter and cavity mode, reproduce with completely chiral mode
-        k = kernel(omega_c, omega_c, omega, g = 1, scale = s, diamagnetic = True, anti_res = True)
+        k = get_kernel(omega_c, omega_c, omega, g = 1, scale = s, diamagnetic = True, anti_res = True)
 
-        x = bogoliubov(k)["trafo"]
+        x = get_bogoliubov(k)["trafo"]
 
         # + only couples to + mode
         matter_idxs = [2, 6]
@@ -51,11 +51,11 @@ def test_jpcl():
         # corresponds to different enantiomers placed separately into perfectly chiral cavity at resonance
 
         # "reproduce" by zeroing out one mode, setting negative coupling to this mode for other chirality    
-        k_plus = kernel(omega_c, 0, omega, g = g, scale = s, diamagnetic = True, anti_res = True, damping = 0)
-        energies_plus = bogoliubov(k_plus)["energies"]
+        k_plus = get_kernel(omega_c, 0, omega, g = g, scale = s, diamagnetic = True, anti_res = True, damping = 0)
+        energies_plus = get_bogoliubov(k_plus)["energies"]
 
-        k_minus = kernel(omega_c, 0, omega, g = -g, scale = s, diamagnetic = True, anti_res = True, damping = 0)
-        energies_minus = bogoliubov(k_minus)["energies"]
+        k_minus = get_kernel(omega_c, 0, omega, g = -g, scale = s, diamagnetic = True, anti_res = True, damping = 0)
+        energies_minus = get_bogoliubov(k_minus)["energies"]
 
         # energies come in pairs, one of them ios decoupled => 0
         energies_minus = jnp.sort(energies_minus)[5:]    

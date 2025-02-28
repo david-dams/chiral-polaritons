@@ -10,13 +10,24 @@ import matplotlib.pyplot as plt
 # TODO: compare hopfield RWA and full
 # TODO: knobs to tune: g, w_+/-, w_b, fraction_minus, c_+/-, damping
 
-def hamiltonian(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus = 0, diamagnetic = True, anti_res = False, damping = 1.):
+def get_matrix_stack(array, n = 2):
+    shape = array.shape  
+    X = int(jnp.prod(jnp.array(shape[:-n])))    
+    return array.reshape(X, *(shape[-i-1] for i in range(n)))
+
+def get_metric(n):
+    return jnp.diag(jnp.concatenate([jnp.ones(n), -jnp.ones(n)]))
+
+def get_converted(M):
+    return get_metric(M.shape[-1] // 2) @ M
+
+def get_kernel(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus = 0, diamagnetic = True, anti_res = False, damping = 1.):
     """
-    Constructs the Hamiltonian for a two-mode (plus, minus) cavity coupled to a matter mode, incorporating chiral 
+    Constructs the Bogoliubov Kernel from the Hamiltonian for a two-mode (plus, minus) cavity coupled to a matter mode, incorporating chiral 
     paramagnetic and diamagnetic couplings, with options for the rotating wave approximation (RWA).
 
     The Hamiltonian is structured as:
-
+    XXX
 
     where:
     - \(i, n\) index the cavity and matter modes.
@@ -24,6 +35,8 @@ def hamiltonian(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus 
     - \(g_{in}\) and \(D_{ij}\) are chiral paramagnetic and diamagnetic couplings.
     - The coupling strength is influenced by the fraction of negative enantiomers.
     - Diamagnetic interactions contribute to self-interaction terms.
+
+    The Kernel is given by metric @ H.
 
     Parameters:
     ----------
@@ -96,18 +109,10 @@ def hamiltonian(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus 
     # build hamiltonian
     hamiltonian = jnp.block([ [A, B], [B.conj(), A.conj()] ] )
 
-    return hamiltonian
-    
-def kernel(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus = 0, diamagnetic = True, anti_res = True, damping = 1.):
-    """kernel for bogoliubov trafo"""
+    # apply metric
+    kernel = get_converted(hamiltonian)
 
-    ham = hamiltonian(omega_plus, omega_minus, omega_b, g, scale, fraction_minus, diamagnetic, anti_res, damping)
-    # import pdb; pdb.set_trace()
-    N = ham.shape[0]    
-    metric = jnp.diag(jnp.concatenate([jnp.ones( N // 2), -jnp.ones( N // 2)]))
-    kernel = metric @ ham
-
-    return kernel    
+    return kernel
 
 # bosonic bogoliubov
 # G = diag(1, -1)
@@ -116,7 +121,7 @@ def kernel(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus = 0, 
 # => T^{\dagger} (GH) T diagonalizes, so T : matter, light => polaritons
 # so we need T^{-1} : polaritons => matter, light
 # construct by taking the positive eigenvectors
-def bogoliubov(M):
+def get_bogoliubov(kernel):
     """bogoliubov transformation matrix $T$ for a kernel M, i.e. the matrix that diagonalizes $H = Ma a^{\\dagger}$ via $a' = T a$ obeying $TgT^{\\dagger} = g$
 
     returns
@@ -125,18 +130,14 @@ def bogoliubov(M):
     inverse: trafo, indexed by N_polaritons x N_orig
     energies :    
     """
-
-    # hilbert space dim (M is twice as large)
-    n = M.shape[0]//2
-
+    n = kernel.shape[0]//2
+    
     # "metric"
-    G = jnp.diag(jnp.concatenate([jnp.ones(n), -jnp.ones(n)]))
+    G = get_metric(n)    
 
     # diagonalize
-    energies, vecs = jnp.linalg.eig(M)    
+    energies, vecs = jnp.linalg.eig(kernel)    
 
-    print(energies.imag.max() / energies.real.max())
-    
     # positive (ev dist symmetric around zero)
     positive = jnp.argsort(energies)[n:]
     
@@ -156,17 +157,53 @@ def bogoliubov(M):
     # inverse = G T^{\dagger} G
     inv = G @ T.T @ G
 
+    return {"kernel" : kernel, "trafo" : T, "inverse" : inv, "energies" : energies}
+
+def validate(kernel, trafo, inverse, energies):
+    # metric
+    G = get_metric(energies.shape[-1] // 2)
+
+    # energies should be real-ish
+    frac_imag = energies.imag.max() / energies.real.max()
+    if frac_imag > 0.1:
+        raise Exception(f"Energies not sufficiently real {frac_imag}")
+    
     # pseudo-unitarity
-    diff1 = jnp.linalg.norm(inv @ G @ inv.T - G)
+    inv = get_matrix_stack(inverse)
+    diff_inv = jnp.linalg.norm(inv @ G @ jnp.transpose(inv, axes = (0, 2, 1)) - G, axis = (-1, -2))
+    if jnp.any(diff_inv > 0.9):
+        raise Exception(f"Trafo not pseudo-unitary {diff_inv}")
+
+    # diagonalizing
+    energies_sorted_positive = jnp.sort(get_matrix_stack(energies, 1), axis = 1)[:, (kernel.shape[-1] // 2):]
+    Omega = jnp.concatenate( [energies_sorted_positive, energies_sorted_positive], axis = 1)
+    Omega = jax.vmap(jnp.diag)(Omega)
+    trafo = get_matrix_stack(trafo)
+    kernel = get_matrix_stack(kernel)
+    diag = jnp.transpose(trafo, axes = (0, 2, 1)) @ G @ kernel @ trafo
+    diff_diag = jnp.linalg.norm(diag - Omega, axis = (-1, -2))
+    if jnp.any(diff_inv > 0.9):
+        raise Exception(f"Trafo not diagonalizing {diff_diag}")    
     
-    # T fulfills T.conj().T @ G @ M @ T = Omega > 0
-    diff2 = jnp.linalg.norm(T.T @ G @ M @ T - jnp.diag(jnp.concatenate([energies[positive], energies[positive]])))
 
-    if diff1 > 0.9 or diff2 > 0.9:
-        print("Not pseudo-unitary", diff1, diff2)
+omega_plus = 1
+omega_minus = 1
+omega_b = 1
+g = 1
 
-    return {"trafo" : T, "inverse" : inv, "energies" : energies}
+get_kernel_vmapped = jax.vmap(jax.vmap( lambda f, d: get_kernel(omega_plus, omega_minus, omega_b, g, fraction_minus = f, damping = d), (None, 0), 0), (0, None), 0)
 
-    
-# test_prl(); test_jpcl()
+dampings = jnp.linspace(0, 1, 10)
+fractions = jnp.linspace(0, 1, 20)
+
+kernels = get_kernel_vmapped(dampings, fractions)
+
+# i x j x N x N -> i x j x N x N
+get_bogoliubov_vmapped = jax.vmap(jax.vmap(get_bogoliubov, in_axes=0, out_axes=0), in_axes=1, out_axes=1)
+output = get_bogoliubov_vmapped(kernels)
+validate(**output)
+
+
+
+
 
