@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # TODO: static case: (damping, fraction_minus (?)) ~ matter content (+-) in lowest polariton mode
 # TODO: static case: (damping, fraction_minus (?)) ~ delta_{+-}
@@ -23,20 +24,8 @@ def get_converted(M):
 
 def get_kernel(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus = 0, diamagnetic = True, anti_res = False, damping = 1.):
     """
-    Constructs the Bogoliubov Kernel from the Hamiltonian for a two-mode (plus, minus) cavity coupled to a matter mode, incorporating chiral 
+    Constructs the Bogoliubov Kernel from the Hamiltonian for a two-mode (plus, minus) cavity coupled to two (plus, minus) matter modes, incorporating chiral 
     paramagnetic and diamagnetic couplings, with options for the rotating wave approximation (RWA).
-
-    The Hamiltonian is structured as:
-    XXX
-
-    where:
-    - \(i, n\) index the cavity and matter modes.
-    - Matter modes are assumed degenerate.
-    - \(g_{in}\) and \(D_{ij}\) are chiral paramagnetic and diamagnetic couplings.
-    - The coupling strength is influenced by the fraction of negative enantiomers.
-    - Diamagnetic interactions contribute to self-interaction terms.
-
-    The Kernel is given by metric @ H.
 
     Parameters:
     ----------
@@ -47,11 +36,11 @@ def get_kernel(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus =
     omega_b : float
         Frequency of the matter mode (assumed degenerate).
     g : float
-        Chiral paramagnetic coupling constant.
+        Chiral paramagnetic coupling constant. Leads to raw coupling of $1 \\pm g$.
     scale : float
-        scale of the interaction strength (default=1), roughly ~ \sqrt{N_+}
+        scale of the interaction strength (default=1), roughly ~ $\\sqrt{N_+}$
     fraction_minus : float, optional (default=0)
-        Fraction of negative enantiomers, scaling the coupling asymmetry, roughly ~ $\sqrt{N_-/ N_+}$
+        Fraction of negative enantiomers, scaling the coupling asymmetry, roughly ~ $\\sqrt{N_-/ N_+}$
     diamagnetic : bool, optional (default=True)
         If True, includes the diamagnetic coupling contributions.
     anti_res : bool, optional (default=False)
@@ -121,6 +110,7 @@ def get_kernel(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus =
 # => T^{\dagger} (GH) T diagonalizes, so T : matter, light => polaritons
 # so we need T^{-1} : polaritons => matter, light
 # construct by taking the positive eigenvectors
+# in trafo, last axis is polaritons
 def get_bogoliubov(kernel):
     """bogoliubov transformation matrix $T$ for a kernel M, i.e. the matrix that diagonalizes $H = Ma a^{\\dagger}$ via $a' = T a$ obeying $TgT^{\\dagger} = g$
 
@@ -160,6 +150,8 @@ def get_bogoliubov(kernel):
     return {"kernel" : kernel, "trafo" : T, "inverse" : inv, "energies" : energies}
 
 def validate(kernel, trafo, inverse, energies):
+    """vectorized validation of output dict, assumes trailing hilbert space axes"""
+    
     # metric
     G = get_metric(energies.shape[-1] // 2)
 
@@ -183,27 +175,57 @@ def validate(kernel, trafo, inverse, energies):
     diag = jnp.transpose(trafo, axes = (0, 2, 1)) @ G @ kernel @ trafo
     diff_diag = jnp.linalg.norm(diag - Omega, axis = (-1, -2))
     if jnp.any(diff_inv > 0.9):
-        raise Exception(f"Trafo not diagonalizing {diff_diag}")    
-    
-
-omega_plus = 1
-omega_minus = 1
-omega_b = 1
-g = 1
-
-get_kernel_vmapped = jax.vmap(jax.vmap( lambda f, d: get_kernel(omega_plus, omega_minus, omega_b, g, fraction_minus = f, damping = d), (None, 0), 0), (0, None), 0)
-
-dampings = jnp.linspace(0, 1, 10)
-fractions = jnp.linspace(0, 1, 20)
-
-kernels = get_kernel_vmapped(dampings, fractions)
-
-# i x j x N x N -> i x j x N x N
-get_bogoliubov_vmapped = jax.vmap(jax.vmap(get_bogoliubov, in_axes=0, out_axes=0), in_axes=1, out_axes=1)
-output = get_bogoliubov_vmapped(kernels)
-validate(**output)
+        raise Exception(f"Trafo not diagonalizing {diff_diag}")
 
 
+def plot_excess_matter_content():
+
+    omega_plus = 1
+    omega_minus = 1
+    omega_b = 1
+    g = 0.2
+
+    get_kernel_vmapped = jax.vmap(jax.vmap( lambda f, d: get_kernel(omega_plus, omega_minus, omega_b, g, fraction_minus = f, damping = d), (None, 0), 0), (0, None), 0)
+
+    dampings = jnp.linspace(0.1, 1, 10)
+    fractions = jnp.linspace(0.1, 1, 20)
+
+    kernels = get_kernel_vmapped(dampings, fractions)
+
+    # i x j x N x N -> i x j x N x N
+    get_bogoliubov_vmapped = jax.vmap(jax.vmap(get_bogoliubov, in_axes=0, out_axes=0), in_axes=1, out_axes=1)
+    output = get_bogoliubov_vmapped(kernels)
+    validate(**output)
+
+    trafo = output["trafo"]
 
 
+    get_content = lambda t, matter, polariton : jnp.sum(jnp.abs(t[..., matter, polariton])**2, axis = -1)  / jnp.linalg.norm(t[..., matter, polariton], axis = -1)
 
+    polariton = 0
+    matter_plus = [2, 6]
+    content_plus = get_content(trafo, matter_plus, polariton)
+
+    matter_minus = [3, 7]
+    content_minus = get_content(trafo, matter_minus, polariton)
+
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+
+    im = ax.matshow(content_plus - content_minus)
+
+    # Move x-ticks below the plot
+    ax.xaxis.set_ticks_position("bottom")
+
+    # Attach a colorbar on top of the matshow plot
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("top", size="5%", pad=0.3)  # "top" places it above
+    ax.set_xlabel("fraction minus")
+    ax.set_ylabel("damping")
+    # Create colorbar with horizontal orientation
+    cbar = plt.colorbar(im, cax=cax, orientation="horizontal")
+    cbar.set_label(r"C_+ - C_-", fontsize=20, labelpad=-85)
+
+    plt.show()
+
+
+plot_excess_matter_content()
