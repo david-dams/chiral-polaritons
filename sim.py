@@ -174,69 +174,55 @@ def validate(kernel, trafo, inverse, energies, eps = 1e-4):
 def get_matter_content(t, matter, polariton):
     return jnp.sum(jnp.abs(t[..., matter, polariton])**2, axis = -1)  / jnp.linalg.norm(t[..., matter, polariton], axis = -1)
 
-def plot_energies_perfect_chirality():
-    """plots energy vs coupling for a perfectly chiral cavity loaded with a single chiral enantiomer"""
+def plot_perfect_cavity_energies():
+    """plots (energy, coupling strength) for mildly chiral molecule in perfect cavity"""
     omega_plus = 1
     omega_minus = 0
     omega_b = 1
     g = 1e-2
-    damping = 0
-
     scales = jnp.logspace(-2, 1, 100)
 
-    get_kernel_vmapped = lambda g : jax.vmap( lambda scale : get_kernel(omega_plus,
-                                                                        omega_minus,
-                                                                        omega_b,
-                                                                        g,
-                                                                        scale=scale,
-                                                                        damping=damping), in_axes = 0, out_axes = 0)
+    get_kernel_vmapped = lambda g : jax.vmap(
+        lambda scale : get_kernel(omega_plus,
+                                  omega_minus,
+                                  omega_b,
+                                  g,
+                                  scale=scale,
+                                  anti_res = True,
+                                  damping=0),
+        in_axes = 0, out_axes = 0)
 
     get_bogoliubov_vmapped = jax.vmap(get_bogoliubov, in_axes=0, out_axes=0)
 
     energies_plus = get_bogoliubov_vmapped(get_kernel_vmapped(g)(scales))["energies"]
     energies_minus = get_bogoliubov_vmapped(get_kernel_vmapped(-g)(scales))["energies"]
-
     energies_plus = jnp.sort(energies_plus, axis = 1)
     energies_minus = jnp.sort(energies_minus, axis = 1)
 
+    # ground state difference
     plot_energies_plus = energies_plus[:, 4] + energies_plus[:, -1]
-    plot_energies_minus = energies_minus[:, 4] + energies_minus[:, -1] 
-    plt.plot(scales**2, plot_energies_plus - plot_energies_minus)
-    # plt.plot(scales**2, plot_energies_minus, '--')
+    plot_energies_minus = energies_minus[:, 4] + energies_minus[:, -1]    
+    # plt.plot(scales**2, (plot_energies_plus - plot_energies_minus) / 2)    
+    # plt.plot(scales**2, energies_plus[:, 5] - energies_minus[:, 5])    
+    # plt.plot(scales**2, energies_plus[:, -1] - energies_minus[:, -1])    
+
+    # lower polariton
+    plt.plot(scales**2, energies_plus[:, 5], label = 'Lower Polariton')
+    
+    # upper polariton
+    plt.plot(scales**2, energies_plus[:, -1], label = 'Upper Polariton')
+    
+    plt.legend()
     plt.xscale('log')
     plt.show()
 
-# def plot_annotated_energies():
-#     # Define ranges for g and scale
-#     g_values = [1e-1, 0.5, 1]  # Example values for g
-#     scale_values = [1e-1, 1e1]  # Example values for scale
+def plot_mixture_energies():
+    """plots of (energy, fraction negative) annotated with polaritonic + matter fraction for mildly chiral molecule in perfect cavity"""    
+    return
 
-#     omega_plus = 1
-#     omega_minus = 1
-#     omega_b = 1
-#     dampings = jnp.linspace(0, 1, 20)
-#     fractions = jnp.linspace(0., 1, 25)
-
-#     # Set up figure
-#     fig, axes = plt.subplots(len(g_values), len(scale_values), figsize=(15, 10), sharex=True, sharey=True)
-    
-#     # Iterate over g and scale values to generate panels
-#     for i, g in enumerate(g_values):
-#         for j, scale in enumerate(scale_values):
-#             # Compute kernels for the given g and scale
-#             get_kernel_vmapped = jax.vmap(
-#                 jax.vmap(
-#                     lambda s: get_kernel(omega_plus, omega_minus, omega_b, g, scale=scale, fraction_minus=f, damping=d), in_
-#                     (None, 0), 0),
-#                 (0, None), 0)
-#             kernels = get_kernel_vmapped(dampings, fractions)
-
-#             # Compute Bogoliubov transformation
-#             get_bogoliubov_vmapped = jax.vmap(get_bogoliubov, in_axes=0, out_axes=0)
-#             output = get_bogoliubov_vmapped(kernels)
-#             # validate(**output)            
-#             trafo = output["trafo"]
-
+def plot_imperfection_energies():
+    """plot of (energy, cavity imperfection) annotated with polaritonic + matter fraction for varying mixtures of mildly chiral molecule"""
+    return
 
 def plot_excess_matter_content():
     # Define ranges for g and scale
@@ -307,5 +293,9 @@ def plot_excess_matter_content():
     plt.show()
 
 if __name__ == '__main__':
-    # plot_excess_matter_content() # TODO
-    plot_energies_perfect_chirality()
+    
+    plot_perfect_cavity_energies() # TODO
+
+    # plot_mixture_energies() # TODO
+
+    # plot_imperfection_energies() # TODO
