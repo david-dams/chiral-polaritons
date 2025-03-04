@@ -4,13 +4,6 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-# TODO: static case: (damping, fraction_minus (?)) ~ matter content (+-) in lowest polariton mode
-# TODO: static case: (damping, fraction_minus (?)) ~ delta_{+-}
-# TODO: dynamic analysis: (c_+/-, fraction_minus) ~ energy deposited
-
-# TODO: compare hopfield RWA and full
-# TODO: knobs to tune: g, w_+/-, w_b, fraction_minus, c_+/-, damping
-
 def get_matrix_stack(array, n = 2):
     shape = array.shape  
     X = int(jnp.prod(jnp.array(shape[:-n])))    
@@ -149,7 +142,7 @@ def get_bogoliubov(kernel):
 
     return {"kernel" : kernel, "trafo" : T, "inverse" : inv, "energies" : energies}
 
-def validate(kernel, trafo, inverse, energies):
+def validate(kernel, trafo, inverse, energies, eps = 1e-4):
     """vectorized validation of output dict, assumes trailing hilbert space axes"""
     
     # metric
@@ -157,13 +150,13 @@ def validate(kernel, trafo, inverse, energies):
 
     # energies should be real-ish
     frac_imag = energies.imag.max() / energies.real.max()
-    if frac_imag > 0.1:
+    if frac_imag > eps:
         raise Exception(f"Energies not sufficiently real {frac_imag}")
     
     # pseudo-unitarity
     inv = get_matrix_stack(inverse)
     diff_inv = jnp.linalg.norm(inv @ G @ jnp.transpose(inv, axes = (0, 2, 1)) - G, axis = (-1, -2))
-    if jnp.any(diff_inv > 0.9):
+    if jnp.any(diff_inv > eps):
         raise Exception(f"Trafo not pseudo-unitary {diff_inv}")
 
     # diagonalizing
@@ -174,58 +167,145 @@ def validate(kernel, trafo, inverse, energies):
     kernel = get_matrix_stack(kernel)
     diag = jnp.transpose(trafo, axes = (0, 2, 1)) @ G @ kernel @ trafo
     diff_diag = jnp.linalg.norm(diag - Omega, axis = (-1, -2))
-    if jnp.any(diff_inv > 0.9):
+    if jnp.any(diff_inv > eps):
         raise Exception(f"Trafo not diagonalizing {diff_diag}")
 
 
+def get_matter_content(t, matter, polariton):
+    return jnp.sum(jnp.abs(t[..., matter, polariton])**2, axis = -1)  / jnp.linalg.norm(t[..., matter, polariton], axis = -1)
+
+def plot_energies_perfect_chirality():
+    """plots energy vs coupling for a perfectly chiral cavity loaded with a single chiral enantiomer"""
+    omega_plus = 1
+    omega_minus = 0
+    omega_b = 1
+    g = 1e-2
+    damping = 0
+
+    scales = jnp.logspace(-2, 1, 100)
+
+    get_kernel_vmapped = lambda g : jax.vmap( lambda scale : get_kernel(omega_plus,
+                                                                        omega_minus,
+                                                                        omega_b,
+                                                                        g,
+                                                                        scale=scale,
+                                                                        damping=damping), in_axes = 0, out_axes = 0)
+
+    get_bogoliubov_vmapped = jax.vmap(get_bogoliubov, in_axes=0, out_axes=0)
+
+    energies_plus = get_bogoliubov_vmapped(get_kernel_vmapped(g)(scales))["energies"]
+    energies_minus = get_bogoliubov_vmapped(get_kernel_vmapped(-g)(scales))["energies"]
+
+    energies_plus = jnp.sort(energies_plus, axis = 1)
+    energies_minus = jnp.sort(energies_minus, axis = 1)
+
+    plot_energies_plus = energies_plus[:, 4] + energies_plus[:, -1]
+    plot_energies_minus = energies_minus[:, 4] + energies_minus[:, -1] 
+    plt.plot(scales**2, plot_energies_plus - plot_energies_minus)
+    # plt.plot(scales**2, plot_energies_minus, '--')
+    plt.xscale('log')
+    plt.show()
+
+# def plot_annotated_energies():
+#     # Define ranges for g and scale
+#     g_values = [1e-1, 0.5, 1]  # Example values for g
+#     scale_values = [1e-1, 1e1]  # Example values for scale
+
+#     omega_plus = 1
+#     omega_minus = 1
+#     omega_b = 1
+#     dampings = jnp.linspace(0, 1, 20)
+#     fractions = jnp.linspace(0., 1, 25)
+
+#     # Set up figure
+#     fig, axes = plt.subplots(len(g_values), len(scale_values), figsize=(15, 10), sharex=True, sharey=True)
+    
+#     # Iterate over g and scale values to generate panels
+#     for i, g in enumerate(g_values):
+#         for j, scale in enumerate(scale_values):
+#             # Compute kernels for the given g and scale
+#             get_kernel_vmapped = jax.vmap(
+#                 jax.vmap(
+#                     lambda s: get_kernel(omega_plus, omega_minus, omega_b, g, scale=scale, fraction_minus=f, damping=d), in_
+#                     (None, 0), 0),
+#                 (0, None), 0)
+#             kernels = get_kernel_vmapped(dampings, fractions)
+
+#             # Compute Bogoliubov transformation
+#             get_bogoliubov_vmapped = jax.vmap(get_bogoliubov, in_axes=0, out_axes=0)
+#             output = get_bogoliubov_vmapped(kernels)
+#             # validate(**output)            
+#             trafo = output["trafo"]
+
+
 def plot_excess_matter_content():
+    # Define ranges for g and scale
+    g_values = [1e-1, 0.5, 1]  # Example values for g
+    scale_values = [1e-1, 1e1]  # Example values for scale
 
     omega_plus = 1
     omega_minus = 1
     omega_b = 1
-    g = 0.2
+    dampings = jnp.linspace(0, 1, 20)
+    fractions = jnp.linspace(0., 1, 25)
 
-    get_kernel_vmapped = jax.vmap(jax.vmap( lambda f, d: get_kernel(omega_plus, omega_minus, omega_b, g, fraction_minus = f, damping = d), (None, 0), 0), (0, None), 0)
+    # Set up figure
+    fig, axes = plt.subplots(len(g_values), len(scale_values), figsize=(15, 10), sharex=True, sharey=True)
 
-    dampings = jnp.linspace(0.1, 1, 10)
-    fractions = jnp.linspace(0.1, 1, 20)
+    # Iterate over g and scale values to generate panels
+    for i, g in enumerate(g_values):
+        for j, scale in enumerate(scale_values):
+            # Compute kernels for the given g and scale
+            get_kernel_vmapped = jax.vmap(
+                jax.vmap(
+                    lambda f, d: get_kernel(omega_plus, omega_minus, omega_b, g, scale=scale, fraction_minus=f, damping=d),
+                    (None, 0), 0),
+                (0, None), 0)
+            kernels = get_kernel_vmapped(dampings, fractions)
 
-    kernels = get_kernel_vmapped(dampings, fractions)
+            # Compute Bogoliubov transformation
+            get_bogoliubov_vmapped = jax.vmap(jax.vmap(get_bogoliubov, in_axes=0, out_axes=0), in_axes=1, out_axes=1)
+            output = get_bogoliubov_vmapped(kernels)
+            # validate(**output)            
+            trafo = output["trafo"]
 
-    # i x j x N x N -> i x j x N x N
-    get_bogoliubov_vmapped = jax.vmap(jax.vmap(get_bogoliubov, in_axes=0, out_axes=0), in_axes=1, out_axes=1)
-    output = get_bogoliubov_vmapped(kernels)
-    validate(**output)
+            # Extract matter content
+            polariton = 0
+            matter_plus = [2, 6]
+            content_plus = get_matter_content(trafo, matter_plus, polariton)
+            matter_minus = [3, 7]
+            content_minus = get_matter_content(trafo, matter_minus, polariton)
+            excess_content = content_plus #- jnp.nan_to_num(content_minus)
+            # excess_content /= content_plus
 
-    trafo = output["trafo"]
+            # Plot heatmap in the appropriate subplot
+            ax = axes[i, j]
+            im = ax.imshow(excess_content, 
+                           aspect='auto', 
+                           cmap="coolwarm", 
+                           origin='lower',
+                           vmin=0,
+                           vmax=1,
+                           extent=[fractions.min(), fractions.max(), dampings.min(), dampings.max()])
+
+            # Set labels and titles
+            if i == len(g_values) - 1:
+                ax.set_xlabel("Fraction Minus")
+            if j == 0:
+                ax.set_ylabel("Damping")
+            ax.set_title(f"g={g}, scale={scale}")
+
+            # Add colorbar to each subplot
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="5%", pad=0.05)
+            cbar = plt.colorbar(im, cax=cax)
+            # cbar.set_label(r"C_+ - C_-", fontsize=20, labelpad=-85)
 
 
-    get_content = lambda t, matter, polariton : jnp.sum(jnp.abs(t[..., matter, polariton])**2, axis = -1)  / jnp.linalg.norm(t[..., matter, polariton], axis = -1)
-
-    polariton = 0
-    matter_plus = [2, 6]
-    content_plus = get_content(trafo, matter_plus, polariton)
-
-    matter_minus = [3, 7]
-    content_minus = get_content(trafo, matter_minus, polariton)
-
-    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
-
-    im = ax.matshow(content_plus - content_minus)
-
-    # Move x-ticks below the plot
-    ax.xaxis.set_ticks_position("bottom")
-
-    # Attach a colorbar on top of the matshow plot
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("top", size="5%", pad=0.3)  # "top" places it above
-    ax.set_xlabel("fraction minus")
-    ax.set_ylabel("damping")
-    # Create colorbar with horizontal orientation
-    cbar = plt.colorbar(im, cax=cax, orientation="horizontal")
-    cbar.set_label(r"C_+ - C_-", fontsize=20, labelpad=-85)
-
+    # Adjust layout and show plot
+    plt.tight_layout()
     plt.show()
 
-
-plot_excess_matter_content()
+if __name__ == '__main__':
+    # plot_excess_matter_content() # TODO
+    plot_energies_perfect_chirality()

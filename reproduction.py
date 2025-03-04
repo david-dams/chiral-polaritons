@@ -45,7 +45,8 @@ def test_jpcl():
     g = 1e-2
 
     # ~ sqrt(number) of molecules
-    scales = jnp.logspace(-2, 1, 100) 
+    scales = jnp.logspace(-2, 1, 100)
+    # linear scaling of gs discrimination for small number of molecules jnp.logspace(0, 1, 100)
 
     def get_energy_deltas(s):
         # corresponds to different enantiomers placed separately into perfectly chiral cavity at resonance
@@ -72,11 +73,17 @@ def test_jpcl():
     e_m = jnp.array(e_m)
 
     plt.plot(scales**2, (e_p - e_m)[:, [0, -1]] )
-
     delta_vac = e_p[:, 0] + e_p[:, -1] - (e_m[:, 0] + e_m[:, -1])
     plt.plot(scales**2, delta_vac / 2, '--')
 
+    # see individual branches
+    # plt.plot(scales**2, e_p[:, 0] + e_p[:, -1], '-')
+    # plt.plot(scales**2, e_m[:, 0] + e_m[:, -1], '--')
+
+    # turn off to see sqrt / linear scaling
     plt.xscale('log')
+    
     plt.show()
     
-test_prl(); test_jpcl()
+# test_prl()
+test_jpcl()
