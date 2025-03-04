@@ -195,13 +195,13 @@ def plot_perfect_cavity_energies():
     get_bogoliubov_vmapped = jax.vmap(get_bogoliubov, in_axes=0, out_axes=0)
 
     energies_plus = get_bogoliubov_vmapped(get_kernel_vmapped(g)(scales))["energies"]
-    energies_minus = get_bogoliubov_vmapped(get_kernel_vmapped(-g)(scales))["energies"]
     energies_plus = jnp.sort(energies_plus, axis = 1)
-    energies_minus = jnp.sort(energies_minus, axis = 1)
 
-    # ground state difference
-    plot_energies_plus = energies_plus[:, 4] + energies_plus[:, -1]
-    plot_energies_minus = energies_minus[:, 4] + energies_minus[:, -1]    
+    # ground state differences, similar to reproduction.py
+    # energies_minus = get_bogoliubov_vmapped(get_kernel_vmapped(-g)(scales))["energies"]
+    # energies_minus = jnp.sort(energies_minus, axis = 1)
+    # plot_energies_plus = energies_plus[:, 4] + energies_plus[:, -1]
+    # plot_energies_minus = energies_minus[:, 4] + energies_minus[:, -1]    
     # plt.plot(scales**2, (plot_energies_plus - plot_energies_minus) / 2)    
     # plt.plot(scales**2, energies_plus[:, 5] - energies_minus[:, 5])    
     # plt.plot(scales**2, energies_plus[:, -1] - energies_minus[:, -1])    
@@ -217,12 +217,71 @@ def plot_perfect_cavity_energies():
     plt.show()
 
 def plot_mixture_energies():
-    """plots of (energy, fraction negative) annotated with polaritonic + matter fraction for mildly chiral molecule in perfect cavity"""    
-    return
+    """plots of (energy, fraction negative) annotated with polaritonic + matter fraction for mildly chiral molecule in perfect cavity for strong coupling"""
+
+    omega_plus = 1
+    omega_minus = 0
+    omega_b = 1
+    g = 1e-2
+    scale = 1e1
+    fractions = jnp.linspace(0, 1, 100)
+
+    get_kernel_vmapped = jax.vmap(
+        lambda fraction : get_kernel(omega_plus,
+                                     omega_minus,
+                                     omega_b,
+                                     g,
+                                     scale=scale,
+                                     fraction_minus = fraction,
+                                     anti_res = True,
+                                     damping=0),
+        in_axes = 0, out_axes = 0)
+
+    get_bogoliubov_vmapped = jax.vmap(get_bogoliubov, in_axes=0, out_axes=0)
+
+    energies = get_bogoliubov_vmapped(get_kernel_vmapped(fractions))["energies"]
+    
+    # filter out dead mode
+    energies = jnp.sort(energies, axis = 1)[:, [4,5,7]]
+
+    plt.plot(fractions, energies)
+    
+    plt.legend()
+    plt.show()
 
 def plot_imperfection_energies():
     """plot of (energy, cavity imperfection) annotated with polaritonic + matter fraction for varying mixtures of mildly chiral molecule"""
-    return
+    
+    omega_plus = 1
+    omega_minus = 0
+    omega_b = 1
+    g = 1e-2
+    scale = 1e1
+    fraction = 1 # racemic
+    dampings = jnp.linspace(0, 1, 100)
+
+    get_kernel_vmapped = jax.vmap(
+        lambda d : get_kernel(omega_plus,
+                              omega_minus,
+                              omega_b,
+                              g,
+                              scale=scale,
+                              fraction_minus = fraction,
+                              anti_res = True,
+                              damping=d),
+        in_axes = 0, out_axes = 0)
+
+    get_bogoliubov_vmapped = jax.vmap(get_bogoliubov, in_axes=0, out_axes=0)
+
+    energies = get_bogoliubov_vmapped(get_kernel_vmapped(dampings))["energies"]
+
+    # no dead mode anymore
+    energies = jnp.sort(energies, axis = 1)[:, 4:]
+
+    plt.plot(dampings, energies)
+    
+    plt.legend()
+    plt.show()
 
 def plot_excess_matter_content():
     # Define ranges for g and scale
@@ -292,10 +351,7 @@ def plot_excess_matter_content():
     plt.tight_layout()
     plt.show()
 
-if __name__ == '__main__':
-    
-    plot_perfect_cavity_energies() # TODO
-
-    # plot_mixture_energies() # TODO
-
-    # plot_imperfection_energies() # TODO
+if __name__ == '__main__':    
+    plot_perfect_cavity_energies() # TODO hübsch, annotate with + matter content
+    plot_mixture_energies() # TODO hübsch annotate with (relative) + matter content
+    plot_imperfection_energies() # TODO hübsch annotate with (relative) + matter content
