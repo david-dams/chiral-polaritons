@@ -13,7 +13,7 @@ def test_prl():
     omega = 1.    
     scales = jnp.logspace(-2, 1, 100) # 0.01 => 10
 
-    def get_matter_content(s):
+    def _get_matter_content(s):
         # corresponds to single matter and cavity mode, reproduce with completely chiral mode
         k = get_kernel(omega_c, omega_c, omega, g = 1, scale = s, diamagnetic = True, anti_res = True)
 
@@ -29,7 +29,7 @@ def test_prl():
     # content = jax.vmap(get_matter_content)(scales)
     content = []
     for s in scales:
-        content.append(get_matter_content(s))
+        content.append(_get_matter_content(s))
 
     plt.plot(scales, content)
     plt.xscale('log')
@@ -85,5 +85,5 @@ def test_jpcl():
     
     plt.show()
     
-# test_prl()
-test_jpcl()
+test_prl()
+# test_jpcl()
