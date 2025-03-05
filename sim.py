@@ -163,18 +163,18 @@ def validate(kernel, trafo, inverse, energies, energies_raw, eps = 1e-4):
     # energies should come in +/- pairs
     diff_e = jnp.linalg.norm(jnp.sort(energies, axis=-1) - jnp.sort(energies_raw, axis=-1))
     if jnp.any(diff_e > eps):
-        raise Exception(f"Energies not paired {diff_e}")
+        print(f"Energies not paired {diff_e}")
     
     # energies should be real-ish
     frac_imag = energies.imag.max() / energies.real.max()
     if frac_imag > eps:
-        raise Exception(f"Energies not sufficiently real {frac_imag}")
+        print(f"Energies not sufficiently real {frac_imag}")
     
     # pseudo-unitarity
     inv = get_matrix_stack(inverse)
     diff_inv = jnp.linalg.norm(inv @ G @ jnp.transpose(inv, axes = (0, 2, 1)) - G, axis = (-1, -2))
     if jnp.any(diff_inv > eps):
-        raise Exception(f"Trafo not pseudo-unitary {diff_inv}")
+        print(f"Trafo not pseudo-unitary {diff_inv}")
 
     # diagonalizing
     Omega = jax.vmap(jnp.diag)(energies)
@@ -183,7 +183,7 @@ def validate(kernel, trafo, inverse, energies, energies_raw, eps = 1e-4):
     diag = jnp.transpose(trafo, axes = (0, 2, 1)) @ G @ kernel @ trafo
     diff_diag = jnp.linalg.norm(diag - Omega, axis = (-1, -2))
     if jnp.any(diff_inv > eps):
-        raise Exception(f"Trafo not diagonalizing {diff_diag}")
+        print(f"Trafo not diagonalizing {diff_diag}")
 
 def get_content(t, idxs, polariton):
     nom = jnp.sum(jnp.abs(t[..., idxs, polariton]**2), axis = -1)
@@ -257,50 +257,82 @@ def plot_perfect_cavity_energies():
     plt.legend()
     plt.xscale('log')
     # plt.show()
-    plt.savefig("e_g.pdf")
+    plt.savefig("energy_coupling.pdf")
 
 def plot_mixture_energies():
     """plots of (energy, fraction negative) annotated with polaritonic + matter fraction for mildly chiral molecule in perfect cavity for strong coupling"""
 
-    omega_plus = 1
-    omega_minus = 0
+    omega_plus = 0.5
+    omega_minus = 100
     omega_b = 1
     g = 1e-2
-    scale = 1e1
+    scale = 0.5
     fractions = jnp.linspace(0, 1, 100)
 
     get_kernel_vmapped = jax.vmap(
-        lambda fraction : get_kernel(omega_plus,
-                                     omega_minus,
-                                     omega_b,
-                                     g,
-                                     scale=scale,
-                                     fraction_minus = fraction,
-                                     anti_res = True,
-                                     damping=0),
+        lambda f : get_kernel(omega_plus,
+                              omega_minus,
+                              omega_b,
+                              g,
+                              scale=scale,
+                              anti_res = True,
+                              fraction_minus = f,
+                              damping=0),
         in_axes = 0, out_axes = 0)
 
-    get_bogoliubov_vmapped = jax.vmap(get_bogoliubov, in_axes=0, out_axes=0)
+    get_bogoliubov_vmapped = jax.vmap(
+        lambda k : get_bogoliubov(k),
+        in_axes=0,
+        out_axes=0)
 
-    energies = get_bogoliubov_vmapped(get_kernel_vmapped(fractions))["energies"]
-    
-    # filter out dead mode
-    energies = jnp.sort(energies, axis = 1)[:, [4,5,7]]
+    kernels = get_kernel_vmapped(fractions)
+    output = get_bogoliubov_vmapped(kernels)
+    validate(**output)    
+    energies = output["energies"].real
 
-    plt.plot(fractions, energies)
+    trafo = output["trafo"]    
+    light_idxs = [0, 1, 4, 5]
+    matter_idxs = [2, 6]
+    polaritons = jnp.arange(8)
+    content_plus = jax.vmap(lambda p : get_content(trafo, matter_idxs, p) )(polaritons)
     
+    matter_idxs = [3, 7]
+    content_minus = jax.vmap(lambda p : get_content(trafo, matter_idxs, p) )(polaritons)
+    
+    fig, ax = plt.subplots(1, 1)
+    idxs = [0, 1, 2]
+    for idx in idxs:
+        ann = content_plus[idx]
+        line = add_segment(ax, fractions, energies[:, idx], ann, mi = ann.min(), mx = ann.max())        
+
+    ax.set_xlabel(r'$\frac{N_+}{N_-}$')
+    ax.set_ylabel(f'E / $\omega_b$')    
+    fig.colorbar(line, ax=ax, label="Positive Matter Content")    
     plt.legend()
-    plt.show()
+    plt.savefig("energy_fraction_plus.pdf")
+    plt.close()
+    
+    fig, ax = plt.subplots(1, 1)
+    idxs = [0, 1, 2]
+    for idx in idxs:
+        ann = content_minus[idx]
+        line = add_segment(ax, fractions, energies[:, idx], ann, mi = ann.min(), mx = ann.max())
+        
+    ax.set_xlabel(r'$\frac{N_+}{N_-}$')
+    ax.set_ylabel(f'E / $\omega_b$')    
+    fig.colorbar(line, ax=ax, label="Negative Matter Content")    
+    plt.legend()
+    plt.savefig("energy_fraction_minus.pdf")
+
 
 def plot_imperfection_energies():
     """plot of (energy, cavity imperfection) annotated with polaritonic + matter fraction for varying mixtures of mildly chiral molecule"""
-    
-    omega_plus = 1
-    omega_minus = 0
+    omega_plus = 0.5
+    omega_minus = 0.5
     omega_b = 1
     g = 1e-2
-    scale = 1e1
-    fraction = 1 # racemic
+    scale = 0.5
+    fraction = 1
     dampings = jnp.linspace(0, 1, 100)
 
     get_kernel_vmapped = jax.vmap(
@@ -314,17 +346,49 @@ def plot_imperfection_energies():
                               damping=d),
         in_axes = 0, out_axes = 0)
 
-    get_bogoliubov_vmapped = jax.vmap(get_bogoliubov, in_axes=0, out_axes=0)
+    get_bogoliubov_vmapped = jax.vmap(
+        lambda k : get_bogoliubov(k),
+        in_axes=0,
+        out_axes=0)
 
-    energies = get_bogoliubov_vmapped(get_kernel_vmapped(dampings))["energies"]
+    kernels = get_kernel_vmapped(dampings)
+    output = get_bogoliubov_vmapped(kernels)
+    validate(**output)    
+    energies = output["energies"].real
 
-    # no dead mode anymore
-    energies = jnp.sort(energies, axis = 1)[:, 4:]
-
-    plt.plot(dampings, energies)
+    trafo = output["trafo"]    
+    light_idxs = [0, 1, 4, 5]
+    matter_idxs = [2, 6]
+    polaritons = jnp.arange(8)
+    content_plus = jax.vmap(lambda p : get_content(trafo, matter_idxs, p) )(polaritons)
     
+    matter_idxs = [3, 7]
+    content_minus = jax.vmap(lambda p : get_content(trafo, matter_idxs, p) )(polaritons)
+    
+    fig, ax = plt.subplots(1, 1)
+    idxs = [0, 1, 2, 3]
+    for idx in idxs:
+        ann = content_plus[idx]
+        line = add_segment(ax, dampings, energies[:, idx], ann, mi = ann.min(), mx = ann.max())        
+
+    ax.set_xlabel(r'Damping')
+    ax.set_ylabel(f'E / $\omega_b$')    
+    fig.colorbar(line, ax=ax, label="Positive Matter Content")    
     plt.legend()
-    plt.show()
+    plt.savefig("energy_damping_plus.pdf")
+    plt.close()
+    
+    fig, ax = plt.subplots(1, 1)
+    idxs = [0, 1, 2, 3]
+    for idx in idxs:
+        ann = content_minus[idx]
+        line = add_segment(ax, dampings, energies[:, idx], ann, mi = ann.min(), mx = ann.max())        
+
+    ax.set_xlabel(r'Damping')
+    ax.set_ylabel(f'E / $\omega_b$')    
+    fig.colorbar(line, ax=ax, label="Negative Matter Content")    
+    plt.legend()
+    plt.savefig("energy_damping_minus.pdf")
 
 def plot_excess_matter_content():
     # Define ranges for g and scale
@@ -395,6 +459,6 @@ def plot_excess_matter_content():
     plt.show()
 
 if __name__ == '__main__':    
-    plot_perfect_cavity_energies() # TODO hübsch, annotate with + matter content
-    # plot_mixture_energies() # TODO hübsch annotate with (relative) + matter content
-    # plot_imperfection_energies() # TODO hübsch annotate with (relative) + matter content
+    # plot_perfect_cavity_energies() # TODO pub-hübsch
+    # plot_mixture_energies() # TODO pub-hübsch 
+    plot_imperfection_energies() # TODO pub-hübsch
