@@ -4,6 +4,9 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+from matplotlib.collections import LineCollection
+from matplotlib.colors import ListedColormap, BoundaryNorm
+
 def get_matrix_stack(array, n = 2):
     shape = array.shape  
     X = int(jnp.prod(jnp.array(shape[:-n])))    
@@ -171,8 +174,22 @@ def validate(kernel, trafo, inverse, energies, eps = 1e-4):
         raise Exception(f"Trafo not diagonalizing {diff_diag}")
 
 
+
 def get_matter_content(t, matter, polariton):
-    return jnp.sum(jnp.abs(t[..., matter, polariton])**2, axis = -1)  / jnp.linalg.norm(t[..., matter, polariton], axis = -1)
+    return jnp.sum(jnp.abs(t[..., matter, polariton]**2), axis = -1)  / jnp.linalg.norm(t[..., polariton], axis = -1)**2
+
+def add_segment(ax, x, y, colors, mi = 0, mx = 1):        
+    points = jnp.array([x, y]).T.reshape(-1, 1, 2)
+    segments = jnp.concatenate([points[:-1], points[1:]], axis=1)
+    norm = plt.Normalize(mi, mx)
+    lc = LineCollection(segments, cmap='magma', norm=norm)
+    lc.set_array(colors)
+    lc.set_linewidth(2)
+    line = ax.add_collection(lc)
+    
+    # auto-adjust plot limits by invisible line
+    ax.plot(x, y, alpha=0.0)
+    return lc
 
 def plot_perfect_cavity_energies():
     """plots (energy, coupling strength) for mildly chiral molecule in perfect cavity"""
@@ -180,7 +197,7 @@ def plot_perfect_cavity_energies():
     omega_minus = 0
     omega_b = 1
     g = 1e-2
-    scales = jnp.logspace(-2, 1, 100)
+    scales = jnp.logspace(-2, 0.1, 100)
 
     get_kernel_vmapped = lambda g : jax.vmap(
         lambda scale : get_kernel(omega_plus,
@@ -194,8 +211,14 @@ def plot_perfect_cavity_energies():
 
     get_bogoliubov_vmapped = jax.vmap(get_bogoliubov, in_axes=0, out_axes=0)
 
-    energies_plus = get_bogoliubov_vmapped(get_kernel_vmapped(g)(scales))["energies"]
+    output = get_bogoliubov_vmapped(get_kernel_vmapped(g)(scales))
+    energies_plus = output["energies"]
     energies_plus = jnp.sort(energies_plus, axis = 1)
+
+    trafo = output["trafo"]
+    matter = [2, 6]
+    get_content = jax.vmap(lambda p : get_matter_content(trafo, matter, p) )
+    content_plus = get_content(jnp.arange(8))
 
     # ground state differences, similar to reproduction.py
     # energies_minus = get_bogoliubov_vmapped(get_kernel_vmapped(-g)(scales))["energies"]
@@ -204,13 +227,19 @@ def plot_perfect_cavity_energies():
     # plot_energies_minus = energies_minus[:, 4] + energies_minus[:, -1]    
     # plt.plot(scales**2, (plot_energies_plus - plot_energies_minus) / 2)    
     # plt.plot(scales**2, energies_plus[:, 5] - energies_minus[:, 5])    
-    # plt.plot(scales**2, energies_plus[:, -1] - energies_minus[:, -1])    
+    # plt.plot(scales**2, energies_plus[:, -1] - energies_minus[:, -1])
 
-    # lower polariton
-    plt.plot(scales**2, energies_plus[:, 5], label = 'Lower Polariton')
+
+    fig, ax = plt.subplots(1, 1)
+
+    line = add_segment(ax, scales**2, energies_plus[:, -1], content_plus[-1])
+    line.set_label('Upper Polariton')    
     
-    # upper polariton
-    plt.plot(scales**2, energies_plus[:, -1], label = 'Upper Polariton')
+    line = add_segment(ax, scales**2, energies_plus[:, 5], content_plus[5])
+    line.set_label('Lower Polariton')
+    line.set_linestyle('--')
+    
+    fig.colorbar(line, ax=ax)
     
     plt.legend()
     plt.xscale('log')
@@ -353,5 +382,5 @@ def plot_excess_matter_content():
 
 if __name__ == '__main__':    
     plot_perfect_cavity_energies() # TODO hübsch, annotate with + matter content
-    plot_mixture_energies() # TODO hübsch annotate with (relative) + matter content
-    plot_imperfection_energies() # TODO hübsch annotate with (relative) + matter content
+    # plot_mixture_energies() # TODO hübsch annotate with (relative) + matter content
+    # plot_imperfection_energies() # TODO hübsch annotate with (relative) + matter content
