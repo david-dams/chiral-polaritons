@@ -53,14 +53,12 @@ def test_jpcl():
 
         # "reproduce" by zeroing out one mode, setting negative coupling to this mode for other chirality    
         k_plus = get_kernel(omega_c, 0, omega, g = g, scale = s, diamagnetic = True, anti_res = True, damping = 0)
-        energies_plus = get_bogoliubov(k_plus)["energies"]
+        energies_plus = get_bogoliubov(k_plus)["energies"][:4]
 
         k_minus = get_kernel(omega_c, 0, omega, g = -g, scale = s, diamagnetic = True, anti_res = True, damping = 0)
-        energies_minus = get_bogoliubov(k_minus)["energies"]
+        energies_minus = get_bogoliubov(k_minus)["energies"][:4]
 
         # energies come in pairs, one of them ios decoupled => 0
-        energies_minus = jnp.sort(energies_minus)[5:]    
-        energies_plus = jnp.sort(energies_plus)[5:]
         return energies_plus, energies_minus
 
     e_p, e_m = [], []
@@ -69,12 +67,12 @@ def test_jpcl():
         e_p.append(ep)
         e_m.append(em)
 
-    e_p = jnp.array(e_p)
-    e_m = jnp.array(e_m)
+    e_p = jnp.array(e_p).real
+    e_m = jnp.array(e_m).real
 
     plt.plot(scales**2, (e_p - e_m)[:, [0, -1]] )
     delta_vac = e_p[:, 0] + e_p[:, -1] - (e_m[:, 0] + e_m[:, -1])
-    plt.plot(scales**2, delta_vac / 2, '--')
+    plt.plot(scales**2, delta_vac.real / 2, '--')
 
     # see individual branches
     # plt.plot(scales**2, e_p[:, 0] + e_p[:, -1], '-')
@@ -86,4 +84,4 @@ def test_jpcl():
     plt.show()
     
 test_prl()
-# test_jpcl()
+test_jpcl()

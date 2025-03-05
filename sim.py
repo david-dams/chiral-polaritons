@@ -7,6 +7,15 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.collections import LineCollection
 from matplotlib.colors import ListedColormap, BoundaryNorm
 
+## DEBUG
+def matprint(mat, fmt="g"):
+    col_maxes = [max([len(("{:"+fmt+"}").format(x)) for x in col]) for col in mat.T]
+    for x in mat:
+        for i, y in enumerate(x):
+            print(("{:"+str(col_maxes[i])+fmt+"}").format(y), end="  ")
+        print("")
+
+## PROCESSING
 def get_matrix_stack(array, n = 2):
     shape = array.shape  
     X = int(jnp.prod(jnp.array(shape[:-n])))    
@@ -108,13 +117,15 @@ def get_kernel(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus =
 # construct by taking the positive eigenvectors
 # in trafo, last axis is polaritons
 def get_bogoliubov(kernel):
-    """bogoliubov transformation matrix $T$ for a kernel M, i.e. the matrix that diagonalizes $H = Ma a^{\\dagger}$ via $a' = T a$ obeying $TgT^{\\dagger} = g$
-
-    returns
+    """performs bogoliubov transformation for kernel. returns dict with keys:
 
     trafo: indexed by N_orig x N_polaritons
     inverse: trafo, indexed by N_polaritons x N_orig
-    energies :    
+    energies : QP energies derived from positive spectrum E_pos like [E_pos, -E_pos]
+    energies_raw : QP energies from diagonalization routine
+
+    Trafo contains matrix such that K_ij T_jk = E_k T_ik.
+    Due to sorting, "bands" are automatically identified.
     """
     n = kernel.shape[0]//2
     
@@ -142,15 +153,18 @@ def get_bogoliubov(kernel):
 
     # inverse = G T^{\dagger} G
     inv = G @ T.T @ G
-
-    return {"kernel" : kernel, "trafo" : T, "inverse" : inv, "energies" : energies}
-
-def validate(kernel, trafo, inverse, energies, eps = 1e-4):
-    """vectorized validation of output dict, assumes trailing hilbert space axes"""
     
-    # metric
+    return {"kernel" : kernel, "trafo" : T, "inverse" : inv, "energies" : jnp.concatenate([energies[positive], -energies[positive]]), "energies_raw" : energies}
+
+def validate(kernel, trafo, inverse, energies, energies_raw, eps = 1e-4):
+    """vectorized validation of output dict, assumes trailing hilbert space axes"""    
     G = get_metric(energies.shape[-1] // 2)
 
+    # energies should come in +/- pairs
+    diff_e = jnp.linalg.norm(jnp.sort(energies, axis=-1) - jnp.sort(energies_raw, axis=-1))
+    if jnp.any(diff_e > eps):
+        raise Exception(f"Energies not paired {diff_e}")
+    
     # energies should be real-ish
     frac_imag = energies.imag.max() / energies.real.max()
     if frac_imag > eps:
@@ -163,9 +177,7 @@ def validate(kernel, trafo, inverse, energies, eps = 1e-4):
         raise Exception(f"Trafo not pseudo-unitary {diff_inv}")
 
     # diagonalizing
-    energies_sorted_positive = jnp.sort(get_matrix_stack(energies, 1), axis = 1)[:, (kernel.shape[-1] // 2):]
-    Omega = jnp.concatenate( [energies_sorted_positive, energies_sorted_positive], axis = 1)
-    Omega = jax.vmap(jnp.diag)(Omega)
+    Omega = jax.vmap(jnp.diag)(energies)
     trafo = get_matrix_stack(trafo)
     kernel = get_matrix_stack(kernel)
     diag = jnp.transpose(trafo, axes = (0, 2, 1)) @ G @ kernel @ trafo
@@ -173,11 +185,12 @@ def validate(kernel, trafo, inverse, energies, eps = 1e-4):
     if jnp.any(diff_inv > eps):
         raise Exception(f"Trafo not diagonalizing {diff_diag}")
 
+def get_content(t, idxs, polariton):
+    nom = jnp.sum(jnp.abs(t[..., idxs, polariton]**2), axis = -1)
+    denom = jnp.linalg.norm(t[..., polariton], axis = -1)**2
+    return nom / denom
 
-
-def get_matter_content(t, matter, polariton):
-    return jnp.sum(jnp.abs(t[..., matter, polariton]**2), axis = -1)  / jnp.linalg.norm(t[..., polariton], axis = -1)**2
-
+## PLOTTING
 def add_segment(ax, x, y, colors, mi = 0, mx = 1):        
     points = jnp.array([x, y]).T.reshape(-1, 1, 2)
     segments = jnp.concatenate([points[:-1], points[1:]], axis=1)
@@ -193,11 +206,11 @@ def add_segment(ax, x, y, colors, mi = 0, mx = 1):
 
 def plot_perfect_cavity_energies():
     """plots (energy, coupling strength) for mildly chiral molecule in perfect cavity"""
-    omega_plus = 1
-    omega_minus = 0
+    omega_plus = 0.5
+    omega_minus = 100
     omega_b = 1
     g = 1e-2
-    scales = jnp.logspace(-2, 0.1, 100)
+    scales = jnp.logspace(-1, 0.5, 30)
 
     get_kernel_vmapped = lambda g : jax.vmap(
         lambda scale : get_kernel(omega_plus,
@@ -205,45 +218,46 @@ def plot_perfect_cavity_energies():
                                   omega_b,
                                   g,
                                   scale=scale,
-                                  anti_res = True,
+                                  anti_res = True,                            
                                   damping=0),
         in_axes = 0, out_axes = 0)
 
-    get_bogoliubov_vmapped = jax.vmap(get_bogoliubov, in_axes=0, out_axes=0)
+    get_bogoliubov_vmapped = jax.vmap(
+        lambda k : get_bogoliubov(k),
+        in_axes=0,
+        out_axes=0)
 
-    output = get_bogoliubov_vmapped(get_kernel_vmapped(g)(scales))
-    energies_plus = output["energies"]
-    energies_plus = jnp.sort(energies_plus, axis = 1)
+    kernels = get_kernel_vmapped(g)(scales)
+    output = get_bogoliubov_vmapped(kernels)
+    validate(**output)    
+    energies = output["energies"].real
 
-    trafo = output["trafo"]
-    matter = [2, 6]
-    get_content = jax.vmap(lambda p : get_matter_content(trafo, matter, p) )
-    content_plus = get_content(jnp.arange(8))
-
-    # ground state differences, similar to reproduction.py
-    # energies_minus = get_bogoliubov_vmapped(get_kernel_vmapped(-g)(scales))["energies"]
-    # energies_minus = jnp.sort(energies_minus, axis = 1)
-    # plot_energies_plus = energies_plus[:, 4] + energies_plus[:, -1]
-    # plot_energies_minus = energies_minus[:, 4] + energies_minus[:, -1]    
-    # plt.plot(scales**2, (plot_energies_plus - plot_energies_minus) / 2)    
-    # plt.plot(scales**2, energies_plus[:, 5] - energies_minus[:, 5])    
-    # plt.plot(scales**2, energies_plus[:, -1] - energies_minus[:, -1])
-
-
-    fig, ax = plt.subplots(1, 1)
-
-    line = add_segment(ax, scales**2, energies_plus[:, -1], content_plus[-1])
-    line.set_label('Upper Polariton')    
+    trafo = output["trafo"]    
+    light_idxs = [0, 1, 4, 5]
+    matter_idxs = [2, 6]
+    polaritons = jnp.arange(8)
+    content_plus = jax.vmap(lambda p : get_content(trafo, matter_idxs, p) )(polaritons)
     
-    line = add_segment(ax, scales**2, energies_plus[:, 5], content_plus[5])
+    fig, ax = plt.subplots(1, 1)    
+
+    idx = 0
+    line = add_segment(ax, scales, energies[:, idx], content_plus[idx])        
     line.set_label('Lower Polariton')
     line.set_linestyle('--')
+
+    idx = 2
+    line = add_segment(ax, scales, energies[:, idx], content_plus[idx])        
+    line.set_label('Upper Polariton')
+
+    ax.set_xlabel(r'Coupling Strength $\sim \sqrt{N}$')
+    ax.set_ylabel(f'E / $\omega_b$')
     
-    fig.colorbar(line, ax=ax)
+    fig.colorbar(line, ax=ax, label="Matter Content")
     
     plt.legend()
     plt.xscale('log')
-    plt.show()
+    # plt.show()
+    plt.savefig("e_g.pdf")
 
 def plot_mixture_energies():
     """plots of (energy, fraction negative) annotated with polaritonic + matter fraction for mildly chiral molecule in perfect cavity for strong coupling"""
