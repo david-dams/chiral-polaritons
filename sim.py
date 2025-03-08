@@ -156,6 +156,26 @@ def get_bogoliubov(kernel):
     
     return {"kernel" : kernel, "trafo" : T, "inverse" : inv, "energies" : jnp.concatenate([energies[positive], -energies[positive]]), "energies_raw" : energies}
 
+def asymptotic_occupation(output, coupling, mu = 0, sigma = 100):
+    """computes the numbers of original bosons in asymptotic out state"""
+
+    def gaussian(x):
+        return 1#(1 / (jnp.sqrt(2 * jnp.pi) * sigma)) * jnp.exp(-0.5 * ((x - mu) / sigma) ** 2)
+
+    trafo_inv = output["trafo"]
+    X = trafo_inv[:4, :4]
+    Y = trafo_inv[4:, :4]
+
+    energies = output["energies"][:4]
+    phi = -1j * gaussian(2 * energies) * coupling @ jnp.conj(X + Y)
+    # print(phi)
+
+    xp = X @ phi
+    yp = Y @ phi    
+    number = xp * yp + yp * jnp.conj(yp) + jnp.conj(xp) * xp + jnp.conj(xp * yp) + jnp.diag(Y @ Y.conj().T)
+
+    return number
+    
 def validate(kernel, trafo, inverse, energies, energies_raw, eps = 1e-4):
     """vectorized validation of output dict, assumes trailing hilbert space axes"""    
     G = get_metric(energies.shape[-1] // 2)
@@ -204,10 +224,10 @@ def add_segment(ax, x, y, colors, mi = 0, mx = 1):
     ax.plot(x, y, alpha=0.0)
     return lc
 
-def plot_perfect_cavity_energies():
+def plot_coupling_energies():
     """plots (energy, coupling strength) for mildly chiral molecule in perfect cavity"""
     omega_plus = 0.5
-    omega_minus = 100
+    omega_minus = 0.5
     omega_b = 1
     g = 1e-2
     scales = jnp.logspace(-1, 0.5, 30)
@@ -240,30 +260,46 @@ def plot_perfect_cavity_energies():
     
     fig, ax = plt.subplots(1, 1)    
 
+    mi, mx = content_plus.min(), content_plus.max()
+    
     idx = 0
-    line = add_segment(ax, scales, energies[:, idx], content_plus[idx])        
+    line = add_segment(ax, scales, energies[:, idx], content_plus[idx], mi = mi, mx = mx)        
     line.set_label('Lower Polariton')
     line.set_linestyle('--')
 
-    idx = 2
-    line = add_segment(ax, scales, energies[:, idx], content_plus[idx])        
+    idx = 3
+    line = add_segment(ax, scales, energies[:, idx], content_plus[idx], mi = mi, mx = mx)        
     line.set_label('Upper Polariton')
 
     ax.set_xlabel(r'Coupling Strength $\sim \sqrt{N}$')
-    ax.set_ylabel(f'E / $\omega_b$')
+    ax.set_ylabel(r'E / $\omega_b$')
     
     fig.colorbar(line, ax=ax, label="Matter Content")
     
     plt.legend()
-    plt.xscale('log')
+    # plt.xscale('log')
     # plt.show()
     plt.savefig("energy_coupling.pdf")
 
-def plot_mixture_energies():
+    # fig, axs = plt.subplots(1, 1)
+    # ax = axs
+    # idxs = [0, 1, 2, 3]
+    # mi, mx = content_plus.min(), content_plus.max()
+    # for idx in idxs:
+    #     ann = content_plus[idx]
+    #     line = add_segment(ax, scales, energies[:, idx], ann, mi = mi, mx = mx)        
+
+    # ax.set_xlabel(r'Coupling Strength $\sim \sqrt{N}$')
+    # ax.set_ylabel(r'E / $\omega_b$')    
+    # fig.colorbar(line, ax=ax, label="Positive Matter Content")    
+    # plt.legend()
+    # plt.savefig("energy_coupling.pdf")
+    
+def plot_fraction_energies():
     """plots of (energy, fraction negative) annotated with polaritonic + matter fraction for mildly chiral molecule in perfect cavity for strong coupling"""
 
     omega_plus = 0.5
-    omega_minus = 100
+    omega_minus = 0.5
     omega_b = 1
     g = 1e-2
     scale = 0.5
@@ -299,39 +335,42 @@ def plot_mixture_energies():
     matter_idxs = [3, 7]
     content_minus = jax.vmap(lambda p : get_content(trafo, matter_idxs, p) )(polaritons)
     
-    fig, ax = plt.subplots(1, 1)
-    idxs = [0, 1, 2]
+    fig, axs = plt.subplots(2, 1)
+
+    ax = axs[0]
+    idxs = [0, 1, 2, 3]
+    content_plus = content_plus[jnp.array(idxs)]
+    mi, mx = content_plus.min(), content_plus.max()
     for idx in idxs:
         ann = content_plus[idx]
-        line = add_segment(ax, fractions, energies[:, idx], ann, mi = ann.min(), mx = ann.max())        
+        line = add_segment(ax, fractions, energies[:, idx], ann, mi = mi, mx = mx)        
 
     ax.set_xlabel(r'$\frac{N_+}{N_-}$')
-    ax.set_ylabel(f'E / $\omega_b$')    
+    ax.set_ylabel(r'E / $\omega_b$')    
     fig.colorbar(line, ax=ax, label="Positive Matter Content")    
-    plt.legend()
-    plt.savefig("energy_fraction_plus.pdf")
-    plt.close()
     
-    fig, ax = plt.subplots(1, 1)
-    idxs = [0, 1, 2]
+    ax = axs[1]
+    idxs = [0, 1, 2, 3]
+    content_minus = content_minus[jnp.array(idxs)]
+    mi, mx = content_minus.min(), content_minus.max()
     for idx in idxs:
         ann = content_minus[idx]
-        line = add_segment(ax, fractions, energies[:, idx], ann, mi = ann.min(), mx = ann.max())
+        line = add_segment(ax, fractions, energies[:, idx], ann, mi = mi, mx = mx)
         
     ax.set_xlabel(r'$\frac{N_+}{N_-}$')
-    ax.set_ylabel(f'E / $\omega_b$')    
+    ax.set_ylabel(r'E / $\omega_b$')    
     fig.colorbar(line, ax=ax, label="Negative Matter Content")    
     plt.legend()
-    plt.savefig("energy_fraction_minus.pdf")
+    plt.savefig("energy_fraction.pdf")
 
 
-def plot_imperfection_energies():
+def plot_damping_energies():
     """plot of (energy, cavity imperfection) annotated with polaritonic + matter fraction for varying mixtures of mildly chiral molecule"""
     omega_plus = 0.5
     omega_minus = 0.5
     omega_b = 1
     g = 1e-2
-    scale = 0.5
+    scale = 1
     fraction = 1
     dampings = jnp.linspace(0, 1, 100)
 
@@ -353,9 +392,9 @@ def plot_imperfection_energies():
 
     kernels = get_kernel_vmapped(dampings)
     output = get_bogoliubov_vmapped(kernels)
-    validate(**output)    
+    # validate(**output)    
     energies = output["energies"].real
-
+    
     trafo = output["trafo"]    
     light_idxs = [0, 1, 4, 5]
     matter_idxs = [2, 6]
@@ -365,30 +404,89 @@ def plot_imperfection_energies():
     matter_idxs = [3, 7]
     content_minus = jax.vmap(lambda p : get_content(trafo, matter_idxs, p) )(polaritons)
     
-    fig, ax = plt.subplots(1, 1)
+    fig, axs = plt.subplots(2, 1)
+
+    ax = axs[0]
     idxs = [0, 1, 2, 3]
+    idxs = [3]
+    content_plus = content_plus[jnp.array(idxs)]
+    mi, mx = content_plus.min(), content_plus.max()
     for idx in idxs:
         ann = content_plus[idx]
-        line = add_segment(ax, dampings, energies[:, idx], ann, mi = ann.min(), mx = ann.max())        
+        line = add_segment(ax, dampings, energies[:, idx], ann, mi = mi, mx = mx)        
 
     ax.set_xlabel(r'Damping')
-    ax.set_ylabel(f'E / $\omega_b$')    
+    ax.set_ylabel(r'E / $\omega_b$')    
     fig.colorbar(line, ax=ax, label="Positive Matter Content")    
     plt.legend()
-    plt.savefig("energy_damping_plus.pdf")
-    plt.close()
-    
-    fig, ax = plt.subplots(1, 1)
+
+    ax = axs[1]
     idxs = [0, 1, 2, 3]
+    idxs = [3]
+    content_minus = content_minus[jnp.array(idxs)]
+    mi, mx = content_plus.min(), content_plus.max()
     for idx in idxs:
         ann = content_minus[idx]
-        line = add_segment(ax, dampings, energies[:, idx], ann, mi = ann.min(), mx = ann.max())        
+        line = add_segment(ax, dampings, energies[:, idx], ann, mi = mi, mx = mx)        
 
     ax.set_xlabel(r'Damping')
-    ax.set_ylabel(f'E / $\omega_b$')    
+    ax.set_ylabel(r'E / $\omega_b$')    
     fig.colorbar(line, ax=ax, label="Negative Matter Content")    
     plt.legend()
-    plt.savefig("energy_damping_minus.pdf")
+    plt.savefig("energy_damping.pdf")
+
+def plot_asymptotic_occupation():
+    """plots asymptotic occupation for racemic mixture"""    
+    omega_plus = 0.5
+    omega_minus = 0.5
+    omega_b = 1
+    g = 1e-2
+    scale = 0.1
+    fraction = 1
+    damping = 1
+    
+    # c_+ / c_-
+    coupling_ratios = jnp.linspace(0, 1, 100)
+
+    # reshape to matrix, couples to light only
+    one = jnp.ones_like(coupling_ratios)
+    zero = 0 * one
+    coupling = jnp.stack([one, coupling_ratios, zero, zero])
+
+    kernel = get_kernel(omega_plus,
+                        omega_minus,
+                        omega_b,
+                        g,
+                        scale = scale,
+                        fraction_minus = fraction,
+                        anti_res = True,
+                        damping = damping)    
+    output = get_bogoliubov(kernel)
+
+    # validate(**output)
+    
+    get_occ_vmapped = jax.vmap(lambda c : asymptotic_occupation(output, coupling = c), in_axes = 1, out_axes = 0)    
+    occ = get_occ_vmapped(coupling)
+    # for c in coupling.T:
+    #     asymptotic_occupation(output, coupling = c)
+    # import pdb; pdb.set_trace()
+    print( jnp.abs(occ.imag).max() )
+
+    
+    occ_plus = occ[:, 2]
+    occ_minus = occ[:, 3]
+
+    
+    fig, axs = plt.subplots(1, 1)
+
+    ax = axs
+    ax.plot(coupling_ratios, occ_plus, label = r'$\langle n_+ \rangle$')
+    ax.plot(coupling_ratios, occ_minus, '--', label = r'$\langle n_- \rangle$')
+    ax.plot(coupling_ratios, occ_plus - occ_minus, '-.')
+    ax.set_xlabel(r'$c_- / c_+$')
+    ax.set_ylabel(r'$\langle n \rangle$')    
+    plt.legend()    
+    plt.savefig("occupation_coupling.pdf")
 
 def plot_excess_matter_content():
     # Define ranges for g and scale
@@ -459,6 +557,7 @@ def plot_excess_matter_content():
     plt.show()
 
 if __name__ == '__main__':    
-    # plot_perfect_cavity_energies() # TODO pub-hübsch
-    # plot_mixture_energies() # TODO pub-hübsch 
-    plot_imperfection_energies() # TODO pub-hübsch
+    # plot_coupling_energies() # TODO pub-hübsch
+    # plot_fraction_energies() # TODO pub-hübsch 
+    # plot_damping_energies() # TODO pub-hübsch
+    plot_asymptotic_occupation()  # TODO pub-hübsch, check if correct
