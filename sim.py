@@ -114,8 +114,9 @@ def get_kernel(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus =
 # from evs T = [x_1, ... J x_1, ...], where J (u v) = (conj(v) conj(u))
 # => T^{\dagger} (GH) T diagonalizes, so T : matter, light => polaritons
 # so we need T^{-1} : polaritons => matter, light
-# construct by taking the positive eigenvectors
-# in trafo, last axis is polaritons
+# so first, second index of
+# T => matter, light
+# T^{-1} => light, matter
 def get_bogoliubov(kernel):
     """performs bogoliubov transformation for kernel. returns dict with keys:
 
@@ -156,24 +157,26 @@ def get_bogoliubov(kernel):
     
     return {"kernel" : kernel, "trafo" : T, "inverse" : inv, "energies" : jnp.concatenate([energies[positive], -energies[positive]]), "energies_raw" : energies}
 
-def asymptotic_occupation(output, coupling, mu = 0, sigma = 100):
+def asymptotic_occupation(output, coupling, mu = 1j*1e-1, sigma = 100):
     """computes the numbers of original bosons in asymptotic out state"""
 
     def gaussian(x):
         return 1#(1 / (jnp.sqrt(2 * jnp.pi) * sigma)) * jnp.exp(-0.5 * ((x - mu) / sigma) ** 2)
 
-    trafo_inv = output["trafo"]
-    X = trafo_inv[:4, :4]
-    Y = trafo_inv[4:, :4]
+    trafo_inv = output["inverse"]
+    X = trafo_inv[:4, :4].T
+    Y = trafo_inv[4:, :4].T
 
     energies = output["energies"][:4]
     phi = -1j * gaussian(2 * energies) * coupling @ jnp.conj(X + Y)
-    # print(phi)
+    # print(jnp.abs(phi))
+    # return phi.imag
 
     xp = X @ phi
-    yp = Y @ phi    
-    number = xp * yp + yp * jnp.conj(yp) + jnp.conj(xp) * xp + jnp.conj(xp * yp) + jnp.diag(Y @ Y.conj().T)
+    yp = Y @ phi
 
+    number = xp * yp + yp * jnp.conj(yp) + jnp.conj(xp) * xp + jnp.conj(xp * yp) + jnp.diag(Y @ Y.conj().T)
+    number = jnp.abs(xp + yp)**2 + jnp.diag(Y @ Y.conj().T)
     return number
     
 def validate(kernel, trafo, inverse, energies, energies_raw, eps = 1e-4):
@@ -435,21 +438,81 @@ def plot_damping_energies():
     plt.legend()
     plt.savefig("energy_damping.pdf")
 
+def plot_energy_transfer():
+    omega_plus = 1
+    omega_minus = 1.5
+    omega_b = 1.1
+    g = 1e-2
+    scale = 1
+    fraction = 1
+    damping = 0
+
+    kernel = get_kernel(omega_plus,
+                        omega_minus,
+                        omega_b,
+                        g,
+                        scale=scale,
+                        fraction_minus=fraction,
+                        anti_res=True,
+                        damping=damping)
+    output = get_bogoliubov(kernel)
+
+    trafo_inv = output["inverse"]
+
+    # 2nd index = matter index => transpose
+    X = trafo_inv[:4, :4].T
+    Y = trafo_inv[4:, :4].T
+
+    coupling = jnp.array([1, 0, 0, 0])
+    energies = output["energies"][:4]
+
+    delta_max = jnp.abs(energies - energies[:, None]).max()
+    ts = jnp.linspace(0, 2*delta_max**2, 1000)
+
+    ham = trafo_inv.conj().T @ jnp.diag(jnp.concatenate([energies, energies])) @ trafo_inv
+    kernel = output["kernel"]
+
+    fig, axs = plt.subplots(2, 2, figsize=(12, 8))
+
+    for i in range(4):
+        omega = energies[i] + 1e-1
+
+        f = lambda t: coupling @ jnp.conj(X + Y) * -1j * jnp.exp(1j * (-omega + energies) * t) / (-omega + energies)
+        phi = jax.vmap(f, in_axes=0, out_axes=1)(ts) * jnp.exp(1j * energies)[:, None]
+
+        xp = jnp.conj(X) @ phi
+        yp = Y @ jnp.conj(phi)
+        delta_e = jnp.abs(xp + yp)**2 + jnp.diag(Y @ Y.conj().T)[:, None]
+        print(jnp.mean(delta_e, axis = 1))
+        print("Other thing:", jnp.diag(Y @ Y.conj().T) )
+        
+
+        ax = axs[i // 2, i % 2]
+        ax.plot(ts, delta_e.T)
+        ax.set_title(f"Energy Transfer for Mode {energies[i]}")
+        ax.set_xlabel("Time")
+        ax.set_ylabel(r"$\Delta E$")
+
+    plt.tight_layout()
+    plt.show()
+    plt.close()
+
 def plot_asymptotic_occupation():
     """plots asymptotic occupation for racemic mixture"""    
-    omega_plus = 0.5
-    omega_minus = 0.5
-    omega_b = 1
+    omega_plus = 1
+    omega_minus = 1
+    omega_b = 1.2
     g = 1e-2
-    scale = 0.1
+    scale = 0.5
     fraction = 1
     damping = 1
     
-    # c_+ / c_-
-    coupling_ratios = jnp.linspace(0, 1, 100)
+    # c_- / c_+
+    scale = 1
+    coupling_ratios = scale * jnp.linspace(0, 1, 100)
 
     # reshape to matrix, couples to light only
-    one = jnp.ones_like(coupling_ratios)
+    one = scale * jnp.ones_like(coupling_ratios)
     zero = 0 * one
     coupling = jnp.stack([one, coupling_ratios, zero, zero])
 
@@ -480,13 +543,15 @@ def plot_asymptotic_occupation():
     fig, axs = plt.subplots(1, 1)
 
     ax = axs
+    # ax.plot(coupling_ratios, occ)
     ax.plot(coupling_ratios, occ_plus, label = r'$\langle n_+ \rangle$')
     ax.plot(coupling_ratios, occ_minus, '--', label = r'$\langle n_- \rangle$')
-    ax.plot(coupling_ratios, occ_plus - occ_minus, '-.')
+    # ax.plot(coupling_ratios, occ_plus - occ_minus, '-.')
     ax.set_xlabel(r'$c_- / c_+$')
     ax.set_ylabel(r'$\langle n \rangle$')    
-    plt.legend()    
-    plt.savefig("occupation_coupling.pdf")
+    plt.legend()
+    plt.show()
+    # plt.savefig("occupation_coupling.pdf")
 
 def plot_excess_matter_content():
     # Define ranges for g and scale
