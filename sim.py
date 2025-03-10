@@ -160,17 +160,17 @@ def get_bogoliubov(kernel):
 def asymptotic_occupation(output, coupling, mu = 1j*1e-1, sigma = 100):
     """computes the numbers of original bosons in asymptotic out state"""
 
+    # extreme broadband
     def gaussian(x):
         return 1#(1 / (jnp.sqrt(2 * jnp.pi) * sigma)) * jnp.exp(-0.5 * ((x - mu) / sigma) ** 2)
 
     trafo_inv = output["inverse"]
+    # 2nd index = matter index => transpose
     X = trafo_inv[:4, :4].T
     Y = trafo_inv[4:, :4].T
 
     energies = output["energies"][:4]
     phi = -1j * gaussian(2 * energies) * coupling @ jnp.conj(X + Y)
-    # print(jnp.abs(phi))
-    # return phi.imag
 
     xp = X @ phi
     yp = Y @ phi
@@ -526,15 +526,11 @@ def plot_asymptotic_occupation():
                         damping = damping)    
     output = get_bogoliubov(kernel)
 
-    # validate(**output)
-    
+    # validate(**output)    
     get_occ_vmapped = jax.vmap(lambda c : asymptotic_occupation(output, coupling = c), in_axes = 1, out_axes = 0)    
     occ = get_occ_vmapped(coupling)
-    # for c in coupling.T:
-    #     asymptotic_occupation(output, coupling = c)
-    # import pdb; pdb.set_trace()
-    print( jnp.abs(occ.imag).max() )
-
+    print(jnp.abs(occ.imag).max())
+    occ = occ.real
     
     occ_plus = occ[:, 2]
     occ_minus = occ[:, 3]
