@@ -438,65 +438,6 @@ def plot_damping_energies():
     plt.legend()
     plt.savefig("energy_damping.pdf")
 
-def plot_energy_transfer():
-    omega_plus = 1
-    omega_minus = 1.5
-    omega_b = 1.1
-    g = 1e-2
-    scale = 1
-    fraction = 1
-    damping = 0
-
-    kernel = get_kernel(omega_plus,
-                        omega_minus,
-                        omega_b,
-                        g,
-                        scale=scale,
-                        fraction_minus=fraction,
-                        anti_res=True,
-                        damping=damping)
-    output = get_bogoliubov(kernel)
-
-    trafo_inv = output["inverse"]
-
-    # 2nd index = matter index => transpose
-    X = trafo_inv[:4, :4].T
-    Y = trafo_inv[4:, :4].T
-
-    coupling = jnp.array([1, 0, 0, 0])
-    energies = output["energies"][:4]
-
-    delta_max = jnp.abs(energies - energies[:, None]).max()
-    ts = jnp.linspace(0, 2*delta_max**2, 1000)
-
-    ham = trafo_inv.conj().T @ jnp.diag(jnp.concatenate([energies, energies])) @ trafo_inv
-    kernel = output["kernel"]
-
-    fig, axs = plt.subplots(2, 2, figsize=(12, 8))
-
-    for i in range(4):
-        omega = energies[i] + 1e-1
-
-        f = lambda t: coupling @ jnp.conj(X + Y) * -1j * jnp.exp(1j * (-omega + energies) * t) / (-omega + energies)
-        phi = jax.vmap(f, in_axes=0, out_axes=1)(ts) * jnp.exp(1j * energies)[:, None]
-
-        xp = jnp.conj(X) @ phi
-        yp = Y @ jnp.conj(phi)
-        delta_e = jnp.abs(xp + yp)**2 + jnp.diag(Y @ Y.conj().T)[:, None]
-        print(jnp.mean(delta_e, axis = 1))
-        print("Other thing:", jnp.diag(Y @ Y.conj().T) )
-        
-
-        ax = axs[i // 2, i % 2]
-        ax.plot(ts, delta_e.T)
-        ax.set_title(f"Energy Transfer for Mode {energies[i]}")
-        ax.set_xlabel("Time")
-        ax.set_ylabel(r"$\Delta E$")
-
-    plt.tight_layout()
-    plt.show()
-    plt.close()
-
 def plot_asymptotic_occupation():
     """plots asymptotic occupation for racemic mixture"""    
     omega_plus = 1
