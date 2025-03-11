@@ -282,21 +282,7 @@ def plot_coupling_energies():
     plt.legend()
     # plt.xscale('log')
     # plt.show()
-    plt.savefig("energy_coupling.pdf")
-
-    # fig, axs = plt.subplots(1, 1)
-    # ax = axs
-    # idxs = [0, 1, 2, 3]
-    # mi, mx = content_plus.min(), content_plus.max()
-    # for idx in idxs:
-    #     ann = content_plus[idx]
-    #     line = add_segment(ax, scales, energies[:, idx], ann, mi = mi, mx = mx)        
-
-    # ax.set_xlabel(r'Coupling Strength $\sim \sqrt{N}$')
-    # ax.set_ylabel(r'E / $\omega_b$')    
-    # fig.colorbar(line, ax=ax, label="Positive Matter Content")    
-    # plt.legend()
-    # plt.savefig("energy_coupling.pdf")
+    plt.savefig("energy_scale.pdf")
     
 def plot_fraction_energies():
     """plots of (energy, fraction negative) annotated with polaritonic + matter fraction for mildly chiral molecule in perfect cavity for strong coupling"""
