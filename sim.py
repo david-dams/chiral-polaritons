@@ -157,20 +157,20 @@ def get_bogoliubov(kernel):
     
     return {"kernel" : kernel, "trafo" : T, "inverse" : inv, "energies" : jnp.concatenate([energies[positive], -energies[positive]]), "energies_raw" : energies}
 
-def asymptotic_occupation(output, coupling, mu = 1j*1e-1, sigma = 100):
+def asymptotic_occupation(output, coupling):
     """computes the numbers of original bosons in asymptotic out state"""
 
-    # extreme broadband
-    def gaussian(x):
-        return 1#(1 / (jnp.sqrt(2 * jnp.pi) * sigma)) * jnp.exp(-0.5 * ((x - mu) / sigma) ** 2)
+    # delta peak
+    def illumination(x):        
+        return 1
 
     trafo_inv = output["inverse"]
-    # 2nd index = matter index => transpose
+    # 2nd index = matter index
     X = trafo_inv[:4, :4].T
     Y = trafo_inv[4:, :4].T
 
     energies = output["energies"][:4]
-    phi = -1j * gaussian(2 * energies) * coupling @ jnp.conj(X + Y)
+    phi = -1j * illumination(2 * energies) * coupling @ jnp.conj(X + Y) 
 
     xp = X @ phi
     yp = Y @ phi
