@@ -157,7 +157,10 @@ def get_bogoliubov(kernel):
     
     return {"kernel" : kernel, "trafo" : T, "inverse" : inv, "energies" : jnp.concatenate([energies[positive], -energies[positive]]), "energies_raw" : energies}
 
-def asymptotic_occupation(output, coupling):
+def get_bogoliubov_vmapped(kernels):
+    return jax.vmap(lambda k : get_bogoliubov(k), in_axes=0, out_axes=0)(kernels)
+
+def get_asymptotic_occupation(output, coupling):
     """computes the numbers of original bosons in asymptotic out state"""
 
     # delta peak
@@ -174,8 +177,7 @@ def asymptotic_occupation(output, coupling):
 
     xp = X @ phi
     yp = Y @ phi
-
-    number = xp * yp + yp * jnp.conj(yp) + jnp.conj(xp) * xp + jnp.conj(xp * yp) + jnp.diag(Y @ Y.conj().T)
+    
     number = jnp.abs(xp + yp)**2 + jnp.diag(Y @ Y.conj().T)
     return number
     
@@ -227,7 +229,7 @@ def add_segment(ax, x, y, colors, mi = 0, mx = 1):
     ax.plot(x, y, alpha=0.0)
     return lc
 
-def plot_coupling_energies():
+def plot_scale_energies():
     """plots (energy, coupling strength) for mildly chiral molecule in perfect cavity"""
     omega_plus = 0.5
     omega_minus = 0.5
@@ -244,11 +246,6 @@ def plot_coupling_energies():
                                   anti_res = True,                            
                                   damping=0),
         in_axes = 0, out_axes = 0)
-
-    get_bogoliubov_vmapped = jax.vmap(
-        lambda k : get_bogoliubov(k),
-        in_axes=0,
-        out_axes=0)
 
     kernels = get_kernel_vmapped(g)(scales)
     output = get_bogoliubov_vmapped(kernels)
@@ -304,11 +301,6 @@ def plot_fraction_energies():
                               fraction_minus = f,
                               damping=0),
         in_axes = 0, out_axes = 0)
-
-    get_bogoliubov_vmapped = jax.vmap(
-        lambda k : get_bogoliubov(k),
-        in_axes=0,
-        out_axes=0)
 
     kernels = get_kernel_vmapped(fractions)
     output = get_bogoliubov_vmapped(kernels)
@@ -374,11 +366,6 @@ def plot_damping_energies():
                               damping=d),
         in_axes = 0, out_axes = 0)
 
-    get_bogoliubov_vmapped = jax.vmap(
-        lambda k : get_bogoliubov(k),
-        in_axes=0,
-        out_axes=0)
-
     kernels = get_kernel_vmapped(dampings)
     output = get_bogoliubov_vmapped(kernels)
     # validate(**output)    
@@ -424,24 +411,22 @@ def plot_damping_energies():
     plt.legend()
     plt.savefig("energy_damping.pdf")
 
-def plot_asymptotic_occupation():
+def plot_occupation_coupling():
     """plots asymptotic occupation for racemic mixture"""    
     omega_plus = 1
     omega_minus = 1
-    omega_b = 1.2
+    omega_b = 1
     g = 1e-2
     scale = 0.5
     fraction = 1
     damping = 1
     
     # c_- / c_+
-    scale = 1
-    coupling_ratios = scale * jnp.linspace(0, 1, 100)
-
-    # reshape to matrix, couples to light only
-    one = scale * jnp.ones_like(coupling_ratios)
+    coupling_scale = 1
+    coupling_ratios = jnp.linspace(0, 1, 100)
+    one = jnp.ones_like(coupling_ratios)
     zero = 0 * one
-    coupling = jnp.stack([one, coupling_ratios, zero, zero])
+    coupling = coupling_scale * jnp.stack([one, coupling_ratios, zero, zero])
 
     kernel = get_kernel(omega_plus,
                         omega_minus,
@@ -453,15 +438,16 @@ def plot_asymptotic_occupation():
                         damping = damping)    
     output = get_bogoliubov(kernel)
 
-    # validate(**output)    
-    get_occ_vmapped = jax.vmap(lambda c : asymptotic_occupation(output, coupling = c), in_axes = 1, out_axes = 0)    
+    # validate(**output)
+    get_occ_vmapped = jax.vmap(lambda c : get_asymptotic_occupation(output, coupling = c), in_axes = 1, out_axes = 0)    
     occ = get_occ_vmapped(coupling)
-    print(jnp.abs(occ.imag).max())
-    occ = occ.real
+    print(jnp.abs(occ.imag).max(), jnp.sum(occ < 0))
+
+    # normalized energy
+    occ = occ.real / occ.real.sum(axis = 1)[:, None]
     
     occ_plus = occ[:, 2]
     occ_minus = occ[:, 3]
-
     
     fig, axs = plt.subplots(1, 1)
 
@@ -469,23 +455,30 @@ def plot_asymptotic_occupation():
     # ax.plot(coupling_ratios, occ)
     ax.plot(coupling_ratios, occ_plus, label = r'$\langle n_+ \rangle$')
     ax.plot(coupling_ratios, occ_minus, '--', label = r'$\langle n_- \rangle$')
-    # ax.plot(coupling_ratios, occ_plus - occ_minus, '-.')
+    ax.plot(coupling_ratios, occ_plus - occ_minus, '-.')
     ax.set_xlabel(r'$c_- / c_+$')
-    ax.set_ylabel(r'$\langle n \rangle$')    
+    ax.set_ylabel(r'$\Delta E / \Delta E_t$')    
     plt.legend()
-    plt.show()
-    # plt.savefig("occupation_coupling.pdf")
+    # plt.show()
+    plt.savefig(f"occupation_coupling_{scale}.pdf")
 
-def plot_excess_matter_content():
+def plot_occupation_2d():
     # Define ranges for g and scale
-    g_values = [1e-1, 0.5, 1]  # Example values for g
-    scale_values = [1e-1, 1e1]  # Example values for scale
+    g_values = [1e-3, 1e-2, 1e-1]  # Example values for g
+    scale_values = [1e-2, 1e-1]  # Example values for scale
 
     omega_plus = 1
     omega_minus = 1
     omega_b = 1
-    dampings = jnp.linspace(0, 1, 20)
-    fractions = jnp.linspace(0., 1, 25)
+    
+    fractions = jnp.linspace(0, 1, 100)
+    
+    # c_- / c_+
+    coupling_scale = 1
+    coupling_ratios = jnp.linspace(0, 1, 40)
+    one = jnp.ones_like(coupling_ratios)
+    zero = 0 * one
+    coupling = coupling_scale * jnp.stack([one, coupling_ratios, zero, zero]).T
 
     # Set up figure
     fig, axes = plt.subplots(len(g_values), len(scale_values), figsize=(15, 10), sharex=True, sharey=True)
@@ -494,43 +487,49 @@ def plot_excess_matter_content():
     for i, g in enumerate(g_values):
         for j, scale in enumerate(scale_values):
             # Compute kernels for the given g and scale
-            get_kernel_vmapped = jax.vmap(
-                jax.vmap(
-                    lambda f, d: get_kernel(omega_plus, omega_minus, omega_b, g, scale=scale, fraction_minus=f, damping=d),
-                    (None, 0), 0),
-                (0, None), 0)
-            kernels = get_kernel_vmapped(dampings, fractions)
-
-            # Compute Bogoliubov transformation
-            get_bogoliubov_vmapped = jax.vmap(jax.vmap(get_bogoliubov, in_axes=0, out_axes=0), in_axes=1, out_axes=1)
+            get_kernel_vmapped =  jax.vmap(
+                lambda x:
+                get_kernel(omega_plus,
+                           omega_minus,
+                           omega_b,
+                           g,
+                           scale=scale,
+                           anti_res = True,
+                           fraction_minus=x,
+                        damping=1),
+                in_axes = 0,
+                out_axes = 0)
+            
+            kernels = get_kernel_vmapped(fractions)
             output = get_bogoliubov_vmapped(kernels)
-            # validate(**output)            
-            trafo = output["trafo"]
+            f_tmp = jax.vmap( get_asymptotic_occupation, in_axes=({'energies': 0, 'kernel': 0, "trafo" : 0, "inverse" : 0, "energies_raw" : 0}, None), out_axes = 0)
+            get_asymptotic_occupation_vmapped = jax.vmap(f_tmp, (None, 0), 1)
 
-            # Extract matter content
-            polariton = 0
-            matter_plus = [2, 6]
-            content_plus = get_matter_content(trafo, matter_plus, polariton)
-            matter_minus = [3, 7]
-            content_minus = get_matter_content(trafo, matter_minus, polariton)
-            excess_content = content_plus #- jnp.nan_to_num(content_minus)
-            # excess_content /= content_plus
+            # fractions x coupling
+            occ =  get_asymptotic_occupation_vmapped(output, coupling)
 
+            # sanity check print
+            print(jnp.abs(occ.imag).max(), jnp.sum(occ < 0))
+            
+            # normalized transfer difference
+            occ = occ.real / occ.real.sum(axis = -1)[..., None]
+            delta_occ = occ[..., 2] - occ[..., 3]
+            
             # Plot heatmap in the appropriate subplot
             ax = axes[i, j]
-            im = ax.imshow(excess_content, 
+            
+            # rows and columns of image
+            im = ax.imshow(delta_occ.T, 
                            aspect='auto', 
                            cmap="coolwarm", 
                            origin='lower',
-                           vmin=0,
-                           vmax=1,
-                           extent=[fractions.min(), fractions.max(), dampings.min(), dampings.max()])
+                           extent=[fractions.min(), fractions.max(), coupling.min(), coupling.max()])
 
             # Set labels and titles
             if i == len(g_values) - 1:
-                ax.set_xlabel("Fraction Minus")
+                ax.set_xlabel(r'$\frac{N_-}{N_+}$')
             if j == 0:
-                ax.set_ylabel("Damping")
+                ax.set_ylabel(r'$c_- / c_+$')                
             ax.set_title(f"g={g}, scale={scale}")
 
             # Add colorbar to each subplot
@@ -539,13 +538,14 @@ def plot_excess_matter_content():
             cbar = plt.colorbar(im, cax=cax)
             # cbar.set_label(r"C_+ - C_-", fontsize=20, labelpad=-85)
 
-
     # Adjust layout and show plot
     plt.tight_layout()
     plt.show()
 
 if __name__ == '__main__':    
-    # plot_coupling_energies() # TODO pub-hübsch
+    # plot_scale_energies() # TODO pub-hübsch
     # plot_fraction_energies() # TODO pub-hübsch 
     # plot_damping_energies() # TODO pub-hübsch
-    plot_asymptotic_occupation()  # TODO pub-hübsch, check if correct
+    plot_occupation_coupling()  # TODO pub-hübsch
+    # plot_occupation_2d()  # TODO pub-hübsch
+
