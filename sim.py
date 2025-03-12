@@ -413,25 +413,24 @@ def plot_damping_energies():
 
     
 def plot_damping_energies_scale_fraction():
-    """2d plot of matter content in scale x damping plane"""
+    """grid plot: damping vs energies for different combinations of scale and fraction"""
     g = 1e-2
-    scale_values = [10]
-    fraction_values = [0.1, 0.5, 1]  
+    scale_values = [0., 0.2, 0.3]
+    fraction_values = [0., 0.1]  
 
-    omega_plus = 1
-    omega_minus = 1
+    omega_plus = 1.2
+    omega_minus = 1.2
     omega_b = 1
     
     scale = jnp.linspace(0, 1, 100)
     damping = jnp.linspace(0, 1, 40)
 
     # Set up figure
-    fig, axes = plt.subplots(len(scale_values), len(fraction_values), figsize=(15, 10), sharex=True, sharey=True)
+    fig, axes = plt.subplots(len(scale_values), len(fraction_values), figsize=(15, 10))
 
     # Iterate over g and scale values to generate panels
     for i, s in enumerate(scale_values):
         for j, f in enumerate(fraction_values):
-            # Compute kernels for the given g and scale
             get_kernel_vmapped =  jax.vmap(
                 lambda d: get_kernel(omega_plus,
                                      omega_minus,
@@ -444,44 +443,36 @@ def plot_damping_energies_scale_fraction():
             )        
             kernels = get_kernel_vmapped(damping)
             output = get_bogoliubov_vmapped(kernels)
-
                 
             trafo = output["trafo"]    
-            light_idxs = [0, 1, 4, 5]
-            matter_idxs = [2, 6]
-            polaritons = jnp.arange(8)
-            content_plus = jax.vmap(lambda p : get_content(trafo, matter_idxs, p) )(polaritons)
-            matter_idxs = [3, 7]
-            content_minus = jax.vmap(lambda p : get_content(trafo, matter_idxs, p) )(polaritons)
+            plus_idxs = [2, 6]
+            minus_idxs = [3, 7]
+            
+            polaritons = jnp.arange(8)            
+            content_plus = jax.vmap(lambda p : get_content(trafo, plus_idxs, p) )(polaritons)
+            content_minus = jax.vmap(lambda p : get_content(trafo, minus_idxs, p) )(polaritons)
             delta = (content_plus - content_minus)
+            # delta = content_minus
 
-            # check for consistency
-            # kk = output["kernel"].reshape(scale.size, damping.size, 8, 8)
+            energies = output["energies"]
             
-            delta = delta.reshape(scale.size, damping.size)            
-            
-            # Plot heatmap in the appropriate subplot
             ax = axes[i, j]
-            
-            # rows and columns of image
-            im = ax.imshow(delta, 
-                           aspect='auto', 
-                           cmap="coolwarm", 
-                           origin='lower',
-                           extent=[damping.min(), damping.max(), scale.min(), scale.max()])
+            # all polariton branches
+            idxs = [0, 1, 2, 3]
+            # idxs = [1,2]
+            mi, mx = delta.min(), delta.max()
+            for idx in idxs:
+                line = add_segment(ax, damping, energies[:, idx], colors = delta[idx], mi = mi, mx = mx)
 
-            # Set labels and titles
-            if i == len(g_values) - 1:
+            if i == len(scale_values) - 1:
                 ax.set_xlabel(r'$\frac{N_-}{N_+}$')
             if j == 0:
                 ax.set_ylabel(r'$c_- / c_+$')                
-            ax.set_title(f"g={g}, f={f}")
+            ax.set_title(f"scale={s}, f={f}")
 
-            # Add colorbar to each subplot
-            divider = make_axes_locatable(ax)
-            cax = divider.append_axes("right", size="5%", pad=0.05)
-            cbar = plt.colorbar(im, cax=cax)
-            # cbar.set_label(r"C_+ - C_-", fontsize=20, labelpad=-85)
+            # # Add colorbar to each subplot
+            cbar = fig.colorbar(line, ax=ax, label="Matter Content")
+            cbar.set_label(r"C_+ - C_-")
 
     # Adjust layout and show plot
     plt.tight_layout()
