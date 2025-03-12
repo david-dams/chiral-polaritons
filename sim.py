@@ -411,6 +411,82 @@ def plot_damping_energies():
     plt.legend()
     plt.savefig("energy_damping.pdf")
 
+    
+def plot_damping_energies_scale_fraction():
+    """2d plot of matter content in scale x damping plane"""
+    g = 1e-2
+    scale_values = [10]
+    fraction_values = [0.1, 0.5, 1]  
+
+    omega_plus = 1
+    omega_minus = 1
+    omega_b = 1
+    
+    scale = jnp.linspace(0, 1, 100)
+    damping = jnp.linspace(0, 1, 40)
+
+    # Set up figure
+    fig, axes = plt.subplots(len(scale_values), len(fraction_values), figsize=(15, 10), sharex=True, sharey=True)
+
+    # Iterate over g and scale values to generate panels
+    for i, s in enumerate(scale_values):
+        for j, f in enumerate(fraction_values):
+            # Compute kernels for the given g and scale
+            get_kernel_vmapped =  jax.vmap(
+                lambda d: get_kernel(omega_plus,
+                                     omega_minus,
+                                     omega_b,
+                                     g = g,
+                                     scale=  s,
+                                     anti_res = True,
+                                     fraction_minus=f,
+                                     damping=d)
+            )        
+            kernels = get_kernel_vmapped(damping)
+            output = get_bogoliubov_vmapped(kernels)
+
+                
+            trafo = output["trafo"]    
+            light_idxs = [0, 1, 4, 5]
+            matter_idxs = [2, 6]
+            polaritons = jnp.arange(8)
+            content_plus = jax.vmap(lambda p : get_content(trafo, matter_idxs, p) )(polaritons)
+            matter_idxs = [3, 7]
+            content_minus = jax.vmap(lambda p : get_content(trafo, matter_idxs, p) )(polaritons)
+            delta = (content_plus - content_minus)
+
+            # check for consistency
+            # kk = output["kernel"].reshape(scale.size, damping.size, 8, 8)
+            
+            delta = delta.reshape(scale.size, damping.size)            
+            
+            # Plot heatmap in the appropriate subplot
+            ax = axes[i, j]
+            
+            # rows and columns of image
+            im = ax.imshow(delta, 
+                           aspect='auto', 
+                           cmap="coolwarm", 
+                           origin='lower',
+                           extent=[damping.min(), damping.max(), scale.min(), scale.max()])
+
+            # Set labels and titles
+            if i == len(g_values) - 1:
+                ax.set_xlabel(r'$\frac{N_-}{N_+}$')
+            if j == 0:
+                ax.set_ylabel(r'$c_- / c_+$')                
+            ax.set_title(f"g={g}, f={f}")
+
+            # Add colorbar to each subplot
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="5%", pad=0.05)
+            cbar = plt.colorbar(im, cax=cax)
+            # cbar.set_label(r"C_+ - C_-", fontsize=20, labelpad=-85)
+
+    # Adjust layout and show plot
+    plt.tight_layout()
+    plt.show()
+    
 def plot_occupation_coupling():
     """plots asymptotic occupation for racemic mixture"""    
     omega_plus = 1
@@ -462,7 +538,88 @@ def plot_occupation_coupling():
     # plt.show()
     plt.savefig(f"occupation_coupling_{scale}.pdf")
 
-def plot_occupation_2d():
+
+def plot_occupation_fraction_coupling():
+    # Define ranges for g and scale
+    g_values = [1e-3, 1e-2, 1e-1]  # Example values for g
+    scale_values = [1e-2, 1e-1]  # Example values for scale
+
+    omega_plus = 1
+    omega_minus = 1
+    omega_b = 1
+    
+    fractions = jnp.linspace(0, 1, 100)
+    
+    # c_- / c_+
+    coupling_scale = 1
+    coupling_ratios = jnp.linspace(0, 1, 40)
+    one = jnp.ones_like(coupling_ratios)
+    zero = 0 * one
+    coupling = coupling_scale * jnp.stack([one, coupling_ratios, zero, zero]).T
+
+    # Set up figure
+    fig, axes = plt.subplots(len(g_values), len(scale_values), figsize=(15, 10), sharex=True, sharey=True)
+
+    # Iterate over g and scale values to generate panels
+    for i, g in enumerate(g_values):
+        for j, scale in enumerate(scale_values):
+            # Compute kernels for the given g and scale
+            get_kernel_vmapped =  jax.vmap(
+                lambda x:
+                get_kernel(omega_plus,
+                           omega_minus,
+                           omega_b,
+                           g,
+                           scale=scale,
+                           anti_res = True,
+                           fraction_minus=x,
+                        damping=1),
+                in_axes = 0,
+                out_axes = 0)
+            
+            kernels = get_kernel_vmapped(fractions)
+            output = get_bogoliubov_vmapped(kernels)
+            f_tmp = jax.vmap( get_asymptotic_occupation, in_axes=({'energies': 0, 'kernel': 0, "trafo" : 0, "inverse" : 0, "energies_raw" : 0}, None), out_axes = 0)
+            get_asymptotic_occupation_vmapped = jax.vmap(f_tmp, (None, 0), 1)
+
+            # fractions x coupling
+            occ =  get_asymptotic_occupation_vmapped(output, coupling)
+
+            # sanity check print
+            print(jnp.abs(occ.imag).max(), jnp.sum(occ < 0))
+            
+            # normalized transfer difference
+            occ = occ.real / occ.real.sum(axis = -1)[..., None]
+            delta_occ = occ[..., 2] - occ[..., 3]
+            
+            # Plot heatmap in the appropriate subplot
+            ax = axes[i, j]
+            
+            # rows and columns of image
+            im = ax.imshow(delta_occ.T, 
+                           aspect='auto', 
+                           cmap="coolwarm", 
+                           origin='lower',
+                           extent=[fractions.min(), fractions.max(), coupling.min(), coupling.max()])
+
+            # Set labels and titles
+            if i == len(g_values) - 1:
+                ax.set_xlabel(r'$\frac{N_-}{N_+}$')
+            if j == 0:
+                ax.set_ylabel(r'$c_- / c_+$')                
+            ax.set_title(f"g={g}, scale={scale}")
+
+            # Add colorbar to each subplot
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="5%", pad=0.05)
+            cbar = plt.colorbar(im, cax=cax)
+            # cbar.set_label(r"C_+ - C_-", fontsize=20, labelpad=-85)
+
+    # Adjust layout and show plot
+    plt.tight_layout()
+    plt.show()
+    
+def plot_occupation_scale_coupling():
     # Define ranges for g and scale
     g_values = [1e-3, 1e-2, 1e-1]  # Example values for g
     scale_values = [1e-2, 1e-1]  # Example values for scale
@@ -546,6 +703,10 @@ if __name__ == '__main__':
     # plot_scale_energies() # TODO pub-hübsch
     # plot_fraction_energies() # TODO pub-hübsch 
     # plot_damping_energies() # TODO pub-hübsch
-    plot_occupation_coupling()  # TODO pub-hübsch
-    # plot_occupation_2d()  # TODO pub-hübsch
+    
+    plot_damping_energies_scale_fraction()
+    
+    # plot_occupation_coupling()  # TODO pub-hübsch
+    # plot_occupation_fraction_coupling()  # TODO pub-hübsch
+    # plot_occupation_scale_coupling()  # TODO pub-hübsch
 
