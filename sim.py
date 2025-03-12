@@ -608,15 +608,14 @@ def plot_occupation_fraction_coupling():
     plt.show()
     
 def plot_occupation_scale_coupling():
-    # Define ranges for g and scale
-    g_values = [1e-3, 1e-2, 1e-1]  # Example values for g
-    scale_values = [1e-2, 1e-1]  # Example values for scale
+    g_values = [1e-3, 1e-2, 1e-1] 
+    f_values = [0.1, 1]  
 
     omega_plus = 1
     omega_minus = 1
     omega_b = 1
     
-    fractions = jnp.linspace(0, 1, 100)
+    scales = jnp.linspace(0, 1, 100)
     
     # c_- / c_+
     coupling_scale = 1
@@ -626,11 +625,11 @@ def plot_occupation_scale_coupling():
     coupling = coupling_scale * jnp.stack([one, coupling_ratios, zero, zero]).T
 
     # Set up figure
-    fig, axes = plt.subplots(len(g_values), len(scale_values), figsize=(15, 10), sharex=True, sharey=True)
+    fig, axes = plt.subplots(len(g_values), len(f_values), figsize=(15, 10), sharex=True, sharey=True)
 
     # Iterate over g and scale values to generate panels
     for i, g in enumerate(g_values):
-        for j, scale in enumerate(scale_values):
+        for j, f in enumerate(f_values):
             # Compute kernels for the given g and scale
             get_kernel_vmapped =  jax.vmap(
                 lambda x:
@@ -638,14 +637,14 @@ def plot_occupation_scale_coupling():
                            omega_minus,
                            omega_b,
                            g,
-                           scale=scale,
+                           scale=x,
                            anti_res = True,
-                           fraction_minus=x,
+                           fraction_minus=f,
                         damping=1),
                 in_axes = 0,
                 out_axes = 0)
             
-            kernels = get_kernel_vmapped(fractions)
+            kernels = get_kernel_vmapped(scales)
             output = get_bogoliubov_vmapped(kernels)
             f_tmp = jax.vmap( get_asymptotic_occupation, in_axes=({'energies': 0, 'kernel': 0, "trafo" : 0, "inverse" : 0, "energies_raw" : 0}, None), out_axes = 0)
             get_asymptotic_occupation_vmapped = jax.vmap(f_tmp, (None, 0), 1)
@@ -668,14 +667,14 @@ def plot_occupation_scale_coupling():
                            aspect='auto', 
                            cmap="coolwarm", 
                            origin='lower',
-                           extent=[fractions.min(), fractions.max(), coupling.min(), coupling.max()])
+                           extent=[scales.min(), scales.max(), coupling.min(), coupling.max()])
 
             # Set labels and titles
             if i == len(g_values) - 1:
-                ax.set_xlabel(r'$\frac{N_-}{N_+}$')
+                ax.set_xlabel(r'$\gamma$')
             if j == 0:
                 ax.set_ylabel(r'$c_- / c_+$')                
-            ax.set_title(f"g={g}, scale={scale}")
+            ax.set_title(fr"g={g}, N_+ / N_- ={f}")
 
             # Add colorbar to each subplot
             divider = make_axes_locatable(ax)
@@ -687,14 +686,17 @@ def plot_occupation_scale_coupling():
     plt.tight_layout()
     plt.show()
 
-if __name__ == '__main__':    
+if __name__ == '__main__':
+    # matter content
+    
     # plot_scale_energies() # TODO pub-hübsch
     # plot_fraction_energies() # TODO pub-hübsch 
-    # plot_damping_energies() # TODO pub-hübsch
-    
-    plot_damping_energies_scale_fraction()
+    # plot_damping_energies() # TODO pub-hübsch    
+    # plot_damping_energies_scale_fraction() # TODO pub-hübsch
+
+    # s matrix
     
     # plot_occupation_coupling()  # TODO pub-hübsch
     # plot_occupation_fraction_coupling()  # TODO pub-hübsch
-    # plot_occupation_scale_coupling()  # TODO pub-hübsch
+    plot_occupation_scale_coupling()  # TODO pub-hübsch
 
