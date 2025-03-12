@@ -415,68 +415,65 @@ def plot_damping_energies():
 def plot_damping_energies_scale_fraction():
     """grid plot: damping vs energies for different combinations of scale and fraction"""
     g = 1e-2
-    scale_values = [0., 0.2, 0.3]
-    fraction_values = [0., 0.1]  
+    f = 1
+    scale_values = [0.1, 0.5]
 
     omega_plus = 1.2
     omega_minus = 1.2
     omega_b = 1
     
-    scale = jnp.linspace(0, 1, 100)
     damping = jnp.linspace(0, 1, 40)
 
     # Set up figure
-    fig, axes = plt.subplots(len(scale_values), len(fraction_values), figsize=(15, 10))
+    fig, axes = plt.subplots(1, len(scale_values), figsize=(15, 10))
 
     # Iterate over g and scale values to generate panels
     for i, s in enumerate(scale_values):
-        for j, f in enumerate(fraction_values):
-            get_kernel_vmapped =  jax.vmap(
-                lambda d: get_kernel(omega_plus,
-                                     omega_minus,
-                                     omega_b,
-                                     g = g,
-                                     scale=  s,
-                                     anti_res = True,
-                                     fraction_minus=f,
-                                     damping=d)
-            )        
-            kernels = get_kernel_vmapped(damping)
-            output = get_bogoliubov_vmapped(kernels)
-                
-            trafo = output["trafo"]    
-            plus_idxs = [2, 6]
-            minus_idxs = [3, 7]
+        get_kernel_vmapped =  jax.vmap(
+            lambda d: get_kernel(omega_plus,
+                                 omega_minus,
+                                 omega_b,
+                                 g = g,
+                                 scale=  s,
+                                 anti_res = True,
+                                 fraction_minus=f,
+                                 damping=d)
+        )        
+        kernels = get_kernel_vmapped(damping)
+        output = get_bogoliubov_vmapped(kernels)
+
+        trafo = output["trafo"]    
+        plus_idxs = [2, 6]
+        minus_idxs = [3, 7]
+
+        polaritons = jnp.arange(8)            
+        content_plus = jax.vmap(lambda p : get_content(trafo, plus_idxs, p) )(polaritons)
+        content_minus = jax.vmap(lambda p : get_content(trafo, minus_idxs, p) )(polaritons)
+        delta = (content_plus - content_minus)
+        # delta = content_minus
+
+        energies = output["energies"]
+
+        ax = axes[i]
+        # all polariton branches
+        idxs = [0, 1, 2, 3]
+        # delta = jnp.abs(delta)
+        mi, mx = delta.min(), delta.max()
+        for idx in idxs:
+            line = add_segment(ax, damping, energies[:, idx], colors = delta[idx], mi = mi, mx = mx)
+
+        if i == 0:
+            ax.set_ylabel(r'$E / \omega_b$')
             
-            polaritons = jnp.arange(8)            
-            content_plus = jax.vmap(lambda p : get_content(trafo, plus_idxs, p) )(polaritons)
-            content_minus = jax.vmap(lambda p : get_content(trafo, minus_idxs, p) )(polaritons)
-            delta = (content_plus - content_minus)
-            # delta = content_minus
-
-            energies = output["energies"]
+        ax.set_xlabel(r'$\gamma$')
             
-            ax = axes[i, j]
-            # all polariton branches
-            idxs = [0, 1, 2, 3]
-            # idxs = [1,2]
-            mi, mx = delta.min(), delta.max()
-            for idx in idxs:
-                line = add_segment(ax, damping, energies[:, idx], colors = delta[idx], mi = mi, mx = mx)
-
-            if i == len(scale_values) - 1:
-                ax.set_xlabel(r'$\frac{N_-}{N_+}$')
-            if j == 0:
-                ax.set_ylabel(r'$c_- / c_+$')                
-            ax.set_title(f"scale={s}, f={f}")
-
-            # # Add colorbar to each subplot
-            cbar = fig.colorbar(line, ax=ax, label="Matter Content")
-            cbar.set_label(r"C_+ - C_-")
+        # # Add colorbar to each subplot
+        cbar = fig.colorbar(line, ax=ax, label="Matter Content", location = "top")
+        cbar.set_label(r"$C_+ - C_-$")
 
     # Adjust layout and show plot
-    plt.tight_layout()
-    plt.show()
+    # plt.tight_layout()
+    plt.savefig("damping_energies_scale_fraction.pdf")
     
 def plot_occupation_coupling():
     """plots asymptotic occupation for racemic mixture"""    
