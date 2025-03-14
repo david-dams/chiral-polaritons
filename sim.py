@@ -294,7 +294,7 @@ def plot_fraction_energies():
     omega_plus = 1
     omega_minus = 0
     omega_b = 1
-    g_values = [1e-5, 1e-2, 0.2]  # Looping over these g values
+    g_values = [1e-2]  # Looping over these g values
     scale = 0.1
     fractions = jnp.linspace(0, 1, 100)
 
@@ -310,7 +310,7 @@ def plot_fraction_energies():
     }
 
     with mpl.rc_context(rc=custom_params):
-        fig, axs = plt.subplots(1, 3, figsize=(18, 5))
+        fig, axs = plt.subplots(1, 1)
 
         for i, g in enumerate(g_values):
             get_kernel_vmapped = jax.vmap(
@@ -336,7 +336,7 @@ def plot_fraction_energies():
             content_plus = jax.vmap(lambda p: get_content(trafo, matter_idxs_plus, p))(polaritons)
             content_minus = jax.vmap(lambda p: get_content(trafo, matter_idxs_minus, p))(polaritons)
 
-            ax = axs[i]
+            ax = axs
             idxs = [1, 2, 3]
             delta = content_plus - content_minus
             mi, mx = delta.min(), delta.max()
@@ -348,18 +348,12 @@ def plot_fraction_energies():
             if i == 0:
                 ax.set_ylabel(r'$\omega / \omega_b$')
 
-            ax.set_title(f'$g = {g}$')
-            ax.annotate(
-                f'( {chr(97 + i)} )', xy=(-0.3, 1.1), xycoords="axes fraction",
-                fontweight="bold", ha="left", va="top"                
-            )
-
             fig.colorbar(line, ax=ax, label=r"$\Delta$")
 
         plt.tight_layout()
         plt.savefig("energy_fraction.pdf")
 
-def plot_3d_energy_surface():
+def plot_fraction_g_energy():
     """3D surface plot for energies[i] colored by delta[i].
 
     Parameters:
@@ -815,9 +809,8 @@ def plot_occupation_scale_coupling():
 if __name__ == '__main__':
     # matter content
     
-    # plot_scale_energies() # TODO pub-hübsch
     # plot_fraction_energies() # TODO pub-hübsch
-    plot_3d_energy_surface() # TODO pub-hübsch
+    # plot_fraction_g_energy() # TODO pub-hübsch
     # plot_damping_energies() # TODO pub-hübsch    
     # plot_damping_energies_scale_fraction() # TODO pub-hübsch
 
@@ -826,4 +819,7 @@ if __name__ == '__main__':
     # plot_occupation_coupling()  # TODO pub-hübsch
     # plot_occupation_fraction_coupling()  # TODO pub-hübsch
     # plot_occupation_scale_coupling()  # TODO pub-hübsch
+
+    # TODO: appendix gs energy differencex
+    # plot_scale_energies() # TODO pub-hübsch
 
