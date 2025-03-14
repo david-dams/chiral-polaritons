@@ -303,9 +303,10 @@ def plot_fraction_energies():
         "text.usetex": True,
         "font.family": "serif",
         "font.size": 16,
-        "axes.labelsize": 16,
-        "xtick.labelsize": 16,
-        "ytick.labelsize": 16,
+        "axes.labelsize": 20,
+        "xtick.labelsize": 18,
+        "ytick.labelsize": 18,
+        "lines.linewidth" : 10,
         "pdf.fonttype": 42
     }
 
@@ -354,19 +355,7 @@ def plot_fraction_energies():
         plt.savefig("energy_fraction.pdf")
 
 def plot_fraction_g_energy():
-    """3D surface plot for energies[i] colored by delta[i].
-
-    Parameters:
-    energies : array (N x m x n)
-        Energy values.
-    delta : array (N x m x n)
-        Color values corresponding to differences in content.
-    fractions : array-like (n,)
-        Fraction negative values.
-    g_values : array-like (m,)
-        Coupling constants.
-    i : int
-        Index of energies and delta to plot.
+    """3D surface plot for energies[i] colored by matter fraction vs fractions and gs
     """
 
     fractions = jnp.linspace(0, 1, 20)
@@ -425,39 +414,56 @@ def plot_fraction_g_energy():
     delta = delta_raw.reshape(8, fractions.size, g_values.size)
 
     X, Y = jnp.meshgrid(g_values, fractions)
-    fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111, projection='3d')
-    
-    for i in [1, 3]:
-        Z = energies[..., i]
-        colors = delta[i]
+    custom_params = {
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.size": 16,
+        "axes.labelsize": 20,
+        "xtick.labelsize": 18,
+        "ytick.labelsize": 18,
+        "lines.linewidth" : 10,
+        "pdf.fonttype": 42
+    }
 
-        surf = ax.plot_surface(X, Y, Z, facecolors=plt.cm.plasma((colors - colors.min()) / (colors.max() - colors.min())),
-                               linewidth=0.2,
-                               antialiased=True,
-                               alpha = 0.9,
-                               shade=False)
-        
-    ax.minorticks_on()
-    ax.set_facecolor('white')
-    
-    # Remove background grid for a cleaner look
-    ax.xaxis.pane.fill = False
-    ax.yaxis.pane.fill = False
-    ax.zaxis.pane.fill = False
+    with mpl.rc_context(rc=custom_params):
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection='3d')
 
-    ax.view_init(elev=25, azim=80)
+        for i in [1, 3]:
+            Z = energies[..., i]
+            colors = delta[i]
 
-    ax.set_xlabel(r'$g$')
-    
-    ax.yaxis.set_rotate_label(False)  
-    ax.set_ylabel(r'$\sqrt{N_- / N_+}$', rotation = 0, labelpad = 20)    
-    
-    ax.zaxis.set_rotate_label(False)  
-    ax.set_zlabel(r'$\omega / \omega_b$', rotation = 0, labelpad = 20)
-        
-    plt.tight_layout()
-    plt.savefig("energy_fraction_g.pdf")
+            surf = ax.plot_surface(X, Y, Z, facecolors=plt.cm.plasma((colors - colors.min()) / (colors.max() - colors.min())),
+                                   linewidth=0.2,
+                                   antialiased=True,
+                                   alpha = 0.9,
+                                   shade=False)
+
+        mappable = plt.cm.ScalarMappable(cmap=plt.cm.plasma)
+        mappable.set_array(delta)
+        fig.colorbar(mappable, ax=ax, shrink=0.6, pad=-0.05, aspect=20, label=r'$\Delta$')
+
+        # ax.minorticks_on()
+        ax.set_facecolor('white')
+
+        # Remove background grid for a cleaner look
+        ax.xaxis.pane.fill = False
+        ax.yaxis.pane.fill = False
+        ax.zaxis.pane.fill = False
+
+        ax.view_init(elev=25, azim=80)
+
+        ax.set_xlabel(r'$g$')
+
+        ax.yaxis.set_rotate_label(False)        
+        ax.set_ylabel(r'$\sqrt{N_- / N_+}$', rotation = 0, labelpad = 35)    
+
+        ax.zaxis.set_rotate_label(False)  
+        ax.set_zlabel(r'$\omega / \omega_b$', rotation = 0, labelpad = 35)
+        ax.tick_params(axis='z', which='major', pad=15)
+
+        plt.tight_layout()
+        plt.savefig("energy_fraction_g.pdf")
         
 
 def plot_damping_energies():
@@ -811,7 +817,7 @@ if __name__ == '__main__':
     
     # plot_fraction_energies() # TODO pub-hübsch
     # plot_fraction_g_energy() # TODO pub-hübsch
-    # plot_damping_energies() # TODO pub-hübsch    
+    plot_damping_energies() # TODO pub-hübsch    
     # plot_damping_energies_scale_fraction() # TODO pub-hübsch
 
     # s matrix
