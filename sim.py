@@ -1,11 +1,15 @@
 import jax
 import jax.numpy as jnp
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from matplotlib.collections import LineCollection
 from matplotlib.colors import ListedColormap, BoundaryNorm
+
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.pyplot as plt
 
 ## DEBUG
 def matprint(mat, fmt="g"):
@@ -68,7 +72,8 @@ def get_kernel(omega_plus, omega_minus, omega_b, g, scale = 1., fraction_minus =
     ) * jnp.array( [1, fraction_minus] ) * scale
     dampings = jnp.array( [1, damping] )    
     g_matrix *= dampings[:, None]
-    diamagnetic = 2 * g_matrix.sum(axis = 1) * g_matrix.sum(axis = 1)[:, None]  / omega_b * (diamagnetic == True)
+    # g_matrix *= 1j
+    diamagnetic = 2 * g_matrix.sum(axis = 1) * g_matrix.conj().sum(axis = 1)[:, None]  / omega_b * (diamagnetic == True)
     
     # coupling is (c+ c) M (c c+) with c = (a+ a- b+ b-)
     # leading to block structure
@@ -231,8 +236,8 @@ def add_segment(ax, x, y, colors, mi = 0, mx = 1):
 
 def plot_scale_energies():
     """plots (energy, coupling strength) for mildly chiral molecule in perfect cavity"""
-    omega_plus = 0.5
-    omega_minus = 0.5
+    omega_plus = 1
+    omega_minus = 1
     omega_b = 1
     g = 1e-2
     scales = jnp.logspace(-1, 0.5, 30)
@@ -258,7 +263,7 @@ def plot_scale_energies():
     polaritons = jnp.arange(8)
     content_plus = jax.vmap(lambda p : get_content(trafo, matter_idxs, p) )(polaritons)
     
-    fig, ax = plt.subplots(1, 1)    
+    fig, ax = plt.subplots(1, 1)
 
     mi, mx = content_plus.min(), content_plus.max()
     
@@ -280,70 +285,186 @@ def plot_scale_energies():
     # plt.xscale('log')
     # plt.show()
     plt.savefig("energy_scale.pdf")
+
     
 def plot_fraction_energies():
-    """plots of (energy, fraction negative) annotated with polaritonic + matter fraction for mildly chiral molecule in perfect cavity for strong coupling"""
+    """plots (energy, fraction negative) annotated with polaritonic + matter fraction
+    for mildly chiral molecule in perfect cavity for strong coupling, looping over different g"""
 
-    omega_plus = 0.5
-    omega_minus = 0.5
+    omega_plus = 1
+    omega_minus = 0
     omega_b = 1
-    g = 1e-2
-    scale = 0.5
+    g_values = [1e-5, 1e-2, 0.2]  # Looping over these g values
+    scale = 0.1
     fractions = jnp.linspace(0, 1, 100)
 
-    get_kernel_vmapped = jax.vmap(
-        lambda f : get_kernel(omega_plus,
-                              omega_minus,
-                              omega_b,
-                              g,
-                              scale=scale,
-                              anti_res = True,
-                              fraction_minus = f,
-                              damping=0),
-        in_axes = 0, out_axes = 0)
+    # Define custom settings for plots
+    custom_params = {
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.size": 16,
+        "axes.labelsize": 16,
+        "xtick.labelsize": 16,
+        "ytick.labelsize": 16,
+        "pdf.fonttype": 42
+    }
 
-    kernels = get_kernel_vmapped(fractions)
-    output = get_bogoliubov_vmapped(kernels)
-    validate(**output)    
-    energies = output["energies"].real
+    with mpl.rc_context(rc=custom_params):
+        fig, axs = plt.subplots(1, 3, figsize=(18, 5))
 
-    trafo = output["trafo"]    
-    light_idxs = [0, 1, 4, 5]
-    matter_idxs = [2, 6]
+        for i, g in enumerate(g_values):
+            get_kernel_vmapped = jax.vmap(
+                lambda f: get_kernel(omega_plus,
+                                     omega_minus,
+                                     omega_b,
+                                     g=g,
+                                     scale=scale,
+                                     anti_res=True,
+                                     fraction_minus=f,
+                                     damping=0),
+                in_axes=0, out_axes=0)
+
+            kernels = get_kernel_vmapped(fractions)
+            output = get_bogoliubov_vmapped(kernels)
+            validate(**output)
+            energies = output["energies"].real
+
+            trafo = output["trafo"]
+            matter_idxs_plus = [2, 6]
+            matter_idxs_minus = [3, 7]
+            polaritons = jnp.arange(8)
+            content_plus = jax.vmap(lambda p: get_content(trafo, matter_idxs_plus, p))(polaritons)
+            content_minus = jax.vmap(lambda p: get_content(trafo, matter_idxs_minus, p))(polaritons)
+
+            ax = axs[i]
+            idxs = [1, 2, 3]
+            delta = content_plus - content_minus
+            mi, mx = delta.min(), delta.max()
+            for idx in idxs:
+                ann = delta[idx]
+                line = add_segment(ax, fractions, energies[:, idx], ann, mi=mi, mx=mx)
+
+            ax.set_xlabel(r'$\sqrt{N_- / N_+}$')
+            if i == 0:
+                ax.set_ylabel(r'$\omega / \omega_b$')
+
+            ax.set_title(f'$g = {g}$')
+            ax.annotate(
+                f'( {chr(97 + i)} )', xy=(-0.3, 1.1), xycoords="axes fraction",
+                fontweight="bold", ha="left", va="top"                
+            )
+
+            fig.colorbar(line, ax=ax, label=r"$\Delta$")
+
+        plt.tight_layout()
+        plt.savefig("energy_fraction.pdf")
+
+def plot_3d_energy_surface():
+    """3D surface plot for energies[i] colored by delta[i].
+
+    Parameters:
+    energies : array (N x m x n)
+        Energy values.
+    delta : array (N x m x n)
+        Color values corresponding to differences in content.
+    fractions : array-like (n,)
+        Fraction negative values.
+    g_values : array-like (m,)
+        Coupling constants.
+    i : int
+        Index of energies and delta to plot.
+    """
+
+    fractions = jnp.linspace(0, 1, 20)
+    g_values = jnp.linspace(0, 1, 40)
+    omega_plus = 1
+    omega_minus = 0
+    omega_b = 1
+    scale = 0.1
+    
+    get_kernel_vmapped = jax.vmap(jax.vmap(
+        lambda f, g:
+        get_kernel(omega_plus,
+                   omega_minus,
+                   omega_b,
+                   g=g,
+                   scale=scale,
+                   anti_res=True,
+                   fraction_minus=f,
+                   damping=0),
+        in_axes=(0, None),
+        out_axes=0),
+                                  in_axes = (None, 0),
+                                  out_axes = 1                                  
+                                  )
+
+    kernels = get_kernel_vmapped(fractions, g_values)
+    output = get_bogoliubov_vmapped(get_matrix_stack(kernels))
+
+    energies = output["energies"].reshape(fractions.size, g_values.size, 8)
+    
+    matter_idxs_plus = [2, 6]    
+    get_content_plus = jax.vmap(jax.vmap(
+        lambda p, t:
+        get_content(t,
+                    matter_idxs_plus,
+                    p),
+        in_axes = (0, None),
+        out_axes = 0),
+                                in_axes = (None, 0),
+                                out_axes = 1)    
+    matter_idxs_minus = [3, 7]    
+    get_content_minus = jax.vmap(jax.vmap(
+        lambda p, t :
+        get_content(t,
+                    matter_idxs_minus,
+                    p),
+        in_axes = (0, None),
+        out_axes = 0),
+                                 in_axes = (None, 0),
+                                 out_axes = 1)
+
     polaritons = jnp.arange(8)
-    content_plus = jax.vmap(lambda p : get_content(trafo, matter_idxs, p) )(polaritons)
-    
-    matter_idxs = [3, 7]
-    content_minus = jax.vmap(lambda p : get_content(trafo, matter_idxs, p) )(polaritons)
-    
-    fig, axs = plt.subplots(2, 1)
+    cp = get_content_plus(polaritons, output["trafo"])
+    cm = get_content_minus(polaritons, output["trafo"])
+    delta_raw = cp - cm
+    delta = delta_raw.reshape(8, fractions.size, g_values.size)
 
-    ax = axs[0]
-    idxs = [0, 1, 2, 3]
-    content_plus = content_plus[jnp.array(idxs)]
-    mi, mx = content_plus.min(), content_plus.max()
-    for idx in idxs:
-        ann = content_plus[idx]
-        line = add_segment(ax, fractions, energies[:, idx], ann, mi = mi, mx = mx)        
-
-    ax.set_xlabel(r'$\frac{N_+}{N_-}$')
-    ax.set_ylabel(r'E / $\omega_b$')    
-    fig.colorbar(line, ax=ax, label="Positive Matter Content")    
+    X, Y = jnp.meshgrid(g_values, fractions)
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
     
-    ax = axs[1]
-    idxs = [0, 1, 2, 3]
-    content_minus = content_minus[jnp.array(idxs)]
-    mi, mx = content_minus.min(), content_minus.max()
-    for idx in idxs:
-        ann = content_minus[idx]
-        line = add_segment(ax, fractions, energies[:, idx], ann, mi = mi, mx = mx)
+    for i in [1, 3]:
+        Z = energies[..., i]
+        colors = delta[i]
+
+        surf = ax.plot_surface(X, Y, Z, facecolors=plt.cm.plasma((colors - colors.min()) / (colors.max() - colors.min())),
+                               linewidth=0.2,
+                               antialiased=True,
+                               alpha = 0.9,
+                               shade=False)
         
-    ax.set_xlabel(r'$\frac{N_+}{N_-}$')
-    ax.set_ylabel(r'E / $\omega_b$')    
-    fig.colorbar(line, ax=ax, label="Negative Matter Content")    
-    plt.legend()
-    plt.savefig("energy_fraction.pdf")
+    ax.minorticks_on()
+    ax.set_facecolor('white')
+    
+    # Remove background grid for a cleaner look
+    ax.xaxis.pane.fill = False
+    ax.yaxis.pane.fill = False
+    ax.zaxis.pane.fill = False
 
+    ax.view_init(elev=25, azim=80)
+
+    ax.set_xlabel(r'$g$')
+    
+    ax.yaxis.set_rotate_label(False)  
+    ax.set_ylabel(r'$\sqrt{N_- / N_+}$', rotation = 0, labelpad = 20)    
+    
+    ax.zaxis.set_rotate_label(False)  
+    ax.set_zlabel(r'$\omega / \omega_b$', rotation = 0, labelpad = 20)
+        
+    plt.tight_layout()
+    plt.savefig("energy_fraction_g.pdf")
+        
 
 def plot_damping_energies():
     """plot of (energy, cavity imperfection) annotated with polaritonic + matter fraction for varying mixtures of mildly chiral molecule"""
@@ -481,7 +602,7 @@ def plot_occupation_coupling():
     omega_minus = 1
     omega_b = 1
     g = 1e-2
-    scale = 0.5
+    scale = 0.5    
     fraction = 1
     damping = 1
     
@@ -615,7 +736,7 @@ def plot_occupation_scale_coupling():
     omega_minus = 1
     omega_b = 1
     
-    scales = jnp.linspace(0, 1, 100)
+    scales = jnp.linspace(0, 2, 100)
     
     # c_- / c_+
     coupling_scale = 1
@@ -639,8 +760,8 @@ def plot_occupation_scale_coupling():
                            g,
                            scale=x,
                            anti_res = True,
-                           fraction_minus=f,
-                        damping=1),
+                           fraction_minus=0,
+                           damping=0),
                 in_axes = 0,
                 out_axes = 0)
             
@@ -658,30 +779,35 @@ def plot_occupation_scale_coupling():
             # normalized transfer difference
             occ = occ.real / occ.real.sum(axis = -1)[..., None]
             delta_occ = occ[..., 2] - occ[..., 3]
+            delta_occ = occ[..., 2]
             
             # Plot heatmap in the appropriate subplot
-            ax = axes[i, j]
+            ax = axes[i, j]            
+            ax.set_title(fr"g={g}, N_+ / N_- ={f}")            
+            ax.plot(scales, occ[:, 0, :])
+            # print(occ[:, 0, :].sum(axis = -1))
+            # ax.plot(scales, occ[:, 0, 2])
+        
+            # # rows and columns of image
+            # im = ax.imshow(delta_occ.T, 
+            #                aspect='auto', 
+            #                cmap="coolwarm", 
+            #                origin='lower',
+            #                extent=[scales.min(), scales.max(), coupling.min(), coupling.max()])
+
+            # # Set labels and titles
+            # if i == len(g_values) - 1:
+            #     ax.set_xlabel(r'$\gamma$')
+            # if j == 0:
+            #     ax.set_ylabel(r'$c_- / c_+$')                
+            # ax.set_title(fr"g={g}, N_+ / N_- ={f}")
+
+            # # Add colorbar to each subplot
+            # divider = make_axes_locatable(ax)
+            # cax = divider.append_axes("right", size="5%", pad=0.05)
+            # cbar = plt.colorbar(im, cax=cax)
+            # # cbar.set_label(r"C_+ - C_-", fontsize=20, labelpad=-85)
             
-            # rows and columns of image
-            im = ax.imshow(delta_occ.T, 
-                           aspect='auto', 
-                           cmap="coolwarm", 
-                           origin='lower',
-                           extent=[scales.min(), scales.max(), coupling.min(), coupling.max()])
-
-            # Set labels and titles
-            if i == len(g_values) - 1:
-                ax.set_xlabel(r'$\gamma$')
-            if j == 0:
-                ax.set_ylabel(r'$c_- / c_+$')                
-            ax.set_title(fr"g={g}, N_+ / N_- ={f}")
-
-            # Add colorbar to each subplot
-            divider = make_axes_locatable(ax)
-            cax = divider.append_axes("right", size="5%", pad=0.05)
-            cbar = plt.colorbar(im, cax=cax)
-            # cbar.set_label(r"C_+ - C_-", fontsize=20, labelpad=-85)
-
     # Adjust layout and show plot
     plt.tight_layout()
     plt.show()
@@ -690,7 +816,8 @@ if __name__ == '__main__':
     # matter content
     
     # plot_scale_energies() # TODO pub-hübsch
-    # plot_fraction_energies() # TODO pub-hübsch 
+    # plot_fraction_energies() # TODO pub-hübsch
+    plot_3d_energy_surface() # TODO pub-hübsch
     # plot_damping_energies() # TODO pub-hübsch    
     # plot_damping_energies_scale_fraction() # TODO pub-hübsch
 
@@ -698,5 +825,5 @@ if __name__ == '__main__':
     
     # plot_occupation_coupling()  # TODO pub-hübsch
     # plot_occupation_fraction_coupling()  # TODO pub-hübsch
-    plot_occupation_scale_coupling()  # TODO pub-hübsch
+    # plot_occupation_scale_coupling()  # TODO pub-hübsch
 
