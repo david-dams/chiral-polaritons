@@ -236,11 +236,12 @@ def add_segment(ax, x, y, colors, mi = 0, mx = 1):
 
 def plot_gamma_energies():
     """plots (energy, coupling strength) for mildly chiral molecule in perfect cavity"""
-    omega_plus = 1
-    omega_minus = 1
+    omega_plus = 1.2
+    omega_minus = 1.2
     omega_b = 1
     g = 1e-2
-    gammas = jnp.logspace(-1, 0.5, 30)
+    gammas = jnp.logspace(-2, 0.2, 100)
+    # gammas = jnp.linspace(0.01, 1, 100)
 
     get_kernel_vmapped = lambda g : jax.vmap(
         lambda gamma : get_kernel(omega_plus,
@@ -262,29 +263,41 @@ def plot_gamma_energies():
     matter_idxs = [2, 6]
     polaritons = jnp.arange(8)
     content_plus = jax.vmap(lambda p : get_content(trafo, matter_idxs, p) )(polaritons)
-    
-    fig, ax = plt.subplots(1, 1)
 
-    mi, mx = content_plus.min(), content_plus.max()
-    
-    idx = 0
-    line = add_segment(ax, gammas, energies[:, idx], content_plus[idx], mi = mi, mx = mx)        
-    line.set_label('Lower Polariton')
-    line.set_linestyle('--')
+    custom_params = {
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.size": 16,
+        "axes.labelsize": 20,
+        "xtick.labelsize": 18,
+        "ytick.labelsize": 18,
+        "lines.linewidth" : 10,
+        "pdf.fonttype": 42
+    }
 
-    idx = 3
-    line = add_segment(ax, gammas, energies[:, idx], content_plus[idx], mi = mi, mx = mx)        
-    line.set_label('Upper Polariton')
+    with mpl.rc_context(rc=custom_params):    
+        fig, ax = plt.subplots(1, 1)
 
-    ax.set_xlabel(r'Coupling Strength $\sim \sqrt{N}$')
-    ax.set_ylabel(r'E / $\omega_b$')
-    
-    fig.colorbar(line, ax=ax, label="Matter Content")
-    
-    plt.legend()
-    # plt.xgamma('log')
-    # plt.show()
-    plt.savefig("energy_gamma.pdf")
+        mi, mx = content_plus.min(), content_plus.max()
+
+        idx = 0
+        line = add_segment(ax, gammas, energies[:, idx], content_plus[idx], mi = mi, mx = mx)        
+        # line.set_label('Lower Polariton')
+        # line.set_linestyle('--')
+
+        idx = 3
+        line = add_segment(ax, gammas, energies[:, idx], content_plus[idx], mi = mi, mx = mx)        
+        # line.set_label('Upper Polariton')
+
+        ax.set_xlabel(r'$\gamma_+$')
+        ax.set_ylabel(r'$\omega / \omega_b$')
+
+        fig.colorbar(line, ax=ax, label=r"$\Delta$")
+
+        # plt.legend()
+        plt.xscale('log')
+        plt.tight_layout()
+        plt.savefig("energy_gamma.pdf")
 
     
 def plot_fraction_energies():
@@ -343,9 +356,9 @@ def plot_fraction_energies():
             mi, mx = delta.min(), delta.max()
             for idx in idxs:
                 ann = delta[idx]
-                line = add_segment(ax, fractions, energies[:, idx], ann, mi=mi, mx=mx)
+                line = add_segment(ax, fractions**2, energies[:, idx], ann, mi=mi, mx=mx)
 
-            ax.set_xlabel(r'$\sqrt{N_- / N_+}$')
+            ax.set_xlabel(r'$N_- / N_+$')
             if i == 0:
                 ax.set_ylabel(r'$\omega / \omega_b$')
 
@@ -412,7 +425,7 @@ def plot_fraction_g_energy():
     delta_raw = cp - cm
     delta = delta_raw.reshape(8, fractions.size, g_values.size)
 
-    X, Y = jnp.meshgrid(g_values, fractions)
+    X, Y = jnp.meshgrid(g_values, fractions**2)
     custom_params = {
         "text.usetex": True,
         "font.family": "serif",
@@ -466,7 +479,7 @@ def plot_fraction_g_energy():
         plt.tight_layout()
         plt.savefig("energy_fraction_g.pdf")
         
-
+        
 def plot_damping_energies():
     """plots (energy, fraction negative) annotated with polaritonic + matter fraction
     for mildly chiral molecule in perfect cavity for strong coupling, looping over different g"""
@@ -595,7 +608,7 @@ def plot_energies_damping_fraction():
     delta_raw = cp - cm
     delta = delta_raw.reshape(8, fractions.size, dampings.size)
 
-    X, Y = jnp.meshgrid(dampings, fractions)
+    X, Y = jnp.meshgrid(dampings, fractions**2)
     custom_params = {
         "text.usetex": True,
         "font.family": "serif",
@@ -640,7 +653,7 @@ def plot_energies_damping_fraction():
         ax.set_xlabel(r'$d$')
 
         ax.yaxis.set_rotate_label(False)        
-        ax.set_ylabel(r'$\sqrt{N_- / N_+}$', rotation = 0, labelpad = 35)    
+        ax.set_ylabel(r'$N_- / N_+$', rotation = 0, labelpad = 35)    
 
         ax.zaxis.set_rotate_label(False)  
         ax.set_zlabel(r'$\omega / \omega_b$', rotation = 0, labelpad = 35)
@@ -981,8 +994,9 @@ def plot_occupation_gamma_coupling():
 if __name__ == '__main__':
     # matter content
     
+    # plot_gamma_energies() # DONE
     # plot_fraction_energies() # DONE
-    plot_fraction_g_energy() # DONE
+    # plot_fraction_g_energy() # DONE
     # plot_damping_energies() # DONE
     # plot_energies_damping_fraction() # DONE
 
