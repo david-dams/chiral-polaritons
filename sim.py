@@ -292,7 +292,7 @@ def plot_gamma_energies():
         ax.set_xlabel(r'$\gamma_+$')
         ax.set_ylabel(r'$\omega / \omega_b$')
 
-        fig.colorbar(line, ax=ax, label=r"$\Delta$")
+        fig.colorbar(line, ax=ax, label=r"$C_+$")
 
         # plt.legend()
         plt.xscale('log')
@@ -1024,7 +1024,7 @@ def plot_occupation_gamma_coupling():
 if __name__ == '__main__':
     # matter content
     
-    # plot_gamma_energies() # DONE
+    plot_gamma_energies() # DONE
     # plot_fraction_energies() # DONE
     # plot_fraction_g_energy() # DONE
     # plot_damping_energies() # DONE
