@@ -309,7 +309,7 @@ def plot_fraction_energies():
     omega_b = 1
     g_values = [1e-2]  # Looping over these g values
     gamma = 0.1
-    fractions = jnp.linspace(0, 1, 100)
+    fractions = jnp.linspace(0, 1, 20)
 
     # Define custom settings for plots
     custom_params = {
@@ -319,12 +319,12 @@ def plot_fraction_energies():
         "axes.labelsize": 20,
         "xtick.labelsize": 18,
         "ytick.labelsize": 18,
-        "lines.linewidth" : 10,
+        "lines.linewidth" : 2,
         "pdf.fonttype": 42
     }
 
     with mpl.rc_context(rc=custom_params):
-        fig, axs = plt.subplots(1, 1)
+        fig, axs = plt.subplots(1, 2, figsize = (10,5))
 
         for i, g in enumerate(g_values):
             get_kernel_vmapped = jax.vmap(
@@ -350,19 +350,49 @@ def plot_fraction_energies():
             content_plus = jax.vmap(lambda p: get_content(trafo, matter_idxs_plus, p))(polaritons)
             content_minus = jax.vmap(lambda p: get_content(trafo, matter_idxs_minus, p))(polaritons)
 
-            ax = axs
+            ax = axs[0]
             idxs = [1, 2, 3]
             delta = content_plus - content_minus
             mi, mx = delta.min(), delta.max()
+            styles = ['-', ':', '--']
             for idx in idxs:
                 ann = delta[idx]
-                line = add_segment(ax, fractions**2, energies[:, idx], ann, mi=mi, mx=mx)
+                line = add_segment(ax, fractions, energies[:, idx], ann, mi=mi, mx=mx)
+                line.set_linestyle(styles[idx-1])
 
-            ax.set_xlabel(r'$N_- / N_+$')
+
+            ax.set_xlabel(r'$\gamma_- / \gamma_+$')
             if i == 0:
                 ax.set_ylabel(r'$\omega / \omega_b$')
 
-            fig.colorbar(line, ax=ax, label=r"$\Delta$")
+            divider = make_axes_locatable(axs[0])  # replace axs[0] with the subplot axis you want
+            cax = divider.append_axes("top", size="5%", pad=0.3)
+            cbar = fig.colorbar(line, cax=cax, orientation='horizontal', label=r"$\Delta$")
+            cax.xaxis.set_ticks_position('top')
+            cax.xaxis.set_label_position('top')
+
+            ax.annotate(
+                "(a)", xy=(-0.3, 1.3), xycoords="axes fraction",
+                fontsize=22, fontweight="bold", ha="left", va="top"                
+            )
+
+
+            ax = axs[1]
+            idxs = [1, 2, 3]
+            delta = content_plus - content_minus
+            mi, mx = delta.min(), delta.max()
+            styles = ['-', ':', '--']
+            colors = plt.get_cmap("tab10").colors  # nice set of distinct colors
+            for idx in idxs:
+                ann = delta[idx]
+                ax.plot(fractions, ann, ls = styles[idx-1], color = colors[idx+1])
+
+            ax.set_xlabel(r'$\gamma_- / \gamma_+$')
+            ax.set_ylabel(r'$\Delta$')
+            ax.annotate(
+                "(b)", xy=(-0.3, 1.12), xycoords="axes fraction",
+                fontsize=22, fontweight="bold", ha="left", va="top"                
+            )
 
         plt.tight_layout()
         plt.savefig("energy_fraction.pdf")
