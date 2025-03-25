@@ -271,7 +271,7 @@ def plot_gamma_energies():
         "axes.labelsize": 20,
         "xtick.labelsize": 18,
         "ytick.labelsize": 18,
-        "lines.linewidth" : 10,
+        "lines.linewidth" : 2,
         "pdf.fonttype": 42
     }
 
@@ -354,7 +354,7 @@ def plot_fraction_energies():
             idxs = [1, 2, 3]
             delta = content_plus - content_minus
             mi, mx = delta.min(), delta.max()
-            styles = ['-', ':', '--']
+            styles = [':', '-', '--']
             for idx in idxs:
                 ann = delta[idx]
                 line = add_segment(ax, fractions, energies[:, idx], ann, mi=mi, mx=mx)
@@ -376,23 +376,23 @@ def plot_fraction_energies():
                 fontsize=22, fontweight="bold", ha="left", va="top"                
             )
 
-
             ax = axs[1]
             idxs = [1, 2, 3]
             delta = content_plus - content_minus
             mi, mx = delta.min(), delta.max()
-            styles = ['-', ':', '--']
+            styles = [':', '-', '--']
             colors = plt.get_cmap("tab10").colors  # nice set of distinct colors
             for idx in idxs:
                 ann = delta[idx]
-                ax.plot(fractions, ann, ls = styles[idx-1], color = colors[idx+1])
+                ax.plot(fractions, jnp.abs(ann), ls = styles[idx-1], color = colors[idx+1])
 
             ax.set_xlabel(r'$\gamma_- / \gamma_+$')
-            ax.set_ylabel(r'$\Delta$')
+            ax.set_ylabel(r'$\vert \Delta \vert$')
             ax.annotate(
                 "(b)", xy=(-0.3, 1.12), xycoords="axes fraction",
                 fontsize=22, fontweight="bold", ha="left", va="top"                
             )
+            ax.set_yscale('log')
 
         plt.tight_layout()
         plt.savefig("energy_fraction.pdf")
@@ -455,7 +455,7 @@ def plot_fraction_g_energy():
     delta_raw = cp - cm
     delta = delta_raw.reshape(8, fractions.size, g_values.size)
 
-    X, Y = jnp.meshgrid(g_values, fractions**2)
+    X, Y = jnp.meshgrid(g_values, fractions)
     custom_params = {
         "text.usetex": True,
         "font.family": "serif",
@@ -463,7 +463,7 @@ def plot_fraction_g_energy():
         "axes.labelsize": 20,
         "xtick.labelsize": 18,
         "ytick.labelsize": 18,
-        "lines.linewidth" : 10,
+        "lines.linewidth" : 2,
         "pdf.fonttype": 42
     }
 
@@ -500,7 +500,7 @@ def plot_fraction_g_energy():
         ax.set_xlabel(r'$g$')
 
         ax.yaxis.set_rotate_label(False)        
-        ax.set_ylabel(r'$\sqrt{N_- / N_+}$', rotation = 0, labelpad = 35)    
+        ax.set_ylabel(r'$\gamma_- / \gamma_+$', rotation = 0, labelpad = 35)    
 
         ax.zaxis.set_rotate_label(False)  
         ax.set_zlabel(r'$\omega / \omega_b$', rotation = 0, labelpad = 35)
@@ -519,7 +519,7 @@ def plot_damping_energies():
     omega_b = 1
     g_values = [1e-2]  # Looping over these g values
     gamma = 0.1
-    dampings = jnp.linspace(0, 1, 100)
+    dampings = jnp.linspace(0.01, 1, 100)
     fraction = 1
 
     # Define custom settings for plots
@@ -530,12 +530,12 @@ def plot_damping_energies():
         "axes.labelsize": 20,
         "xtick.labelsize": 18,
         "ytick.labelsize": 18,
-        "lines.linewidth" : 10,
+        "lines.linewidth" : 2,
         "pdf.fonttype": 42
     }
 
     with mpl.rc_context(rc=custom_params):
-        fig, axs = plt.subplots(1, 1)
+        fig, axs = plt.subplots(1, 2, figsize = (10,5))
 
         for i, g in enumerate(g_values):
             get_kernel_vmapped = jax.vmap(
@@ -561,19 +561,50 @@ def plot_damping_energies():
             content_plus = jax.vmap(lambda p: get_content(trafo, matter_idxs_plus, p))(polaritons)
             content_minus = jax.vmap(lambda p: get_content(trafo, matter_idxs_minus, p))(polaritons)
 
-            ax = axs
+            ax = axs[0]
             idxs = [0, 1, 2, 3]
             delta = content_plus - content_minus
             mi, mx = delta.min(), delta.max()
             for idx in idxs:
                 ann = delta[idx]
                 line = add_segment(ax, dampings, energies[:, idx], ann, mi=mi, mx=mx)
+                line.set_label(idxs[idx] + 1)
+
 
             ax.set_xlabel(r'$d$')
             if i == 0:
                 ax.set_ylabel(r'$\omega / \omega_b$')
+                
+            divider = make_axes_locatable(axs[0])  # replace axs[0] with the subplot axis you want
+            cax = divider.append_axes("top", size="5%", pad=0.3)
+            cbar = fig.colorbar(line, cax=cax, orientation='horizontal', label=r"$\Delta$")
+            cax.xaxis.set_ticks_position('top')
+            cax.xaxis.set_label_position('top')
 
-            fig.colorbar(line, ax=ax, label=r"$\Delta$")
+            ax.annotate(
+                "(a)", xy=(-0.3, 1.3), xycoords="axes fraction",
+                fontsize=22, fontweight="bold", ha="left", va="top"                
+            )
+
+            
+            ax = axs[1]
+            idxs = [0, 1, 2, 3]
+            delta = content_plus - content_minus
+            mi, mx = delta.min(), delta.max()
+            colors = plt.get_cmap("tab10").colors  # nice set of distinct colors
+            for idx in idxs:
+                ann = delta[idx]
+                ax.plot(dampings, jnp.abs(ann), color = colors[idx], label = f"{idx + 1}")
+            ax.legend()
+
+            ax.set_xlabel(r'$d$')
+            ax.set_ylabel(r'$\vert \Delta \vert$')
+            ax.annotate(
+                "(b)", xy=(-0.3, 1.12), xycoords="axes fraction",
+                fontsize=22, fontweight="bold", ha="left", va="top"                
+            )
+            ax.set_yscale('log')
+
 
         plt.tight_layout()
         plt.savefig("energy_damping.pdf")
@@ -638,7 +669,7 @@ def plot_energies_damping_fraction():
     delta_raw = cp - cm
     delta = delta_raw.reshape(8, fractions.size, dampings.size)
 
-    X, Y = jnp.meshgrid(dampings, fractions**2)
+    X, Y = jnp.meshgrid(dampings, fractions)
     custom_params = {
         "text.usetex": True,
         "font.family": "serif",
@@ -646,7 +677,7 @@ def plot_energies_damping_fraction():
         "axes.labelsize": 20,
         "xtick.labelsize": 18,
         "ytick.labelsize": 18,
-        "lines.linewidth" : 10,
+        "lines.linewidth" : 2,
         "pdf.fonttype": 42
     }
 
@@ -658,6 +689,7 @@ def plot_energies_damping_fraction():
         for i in idxs:
             Z = energies[..., i]
             colors = delta[i]
+            print(colors.max(), jnp.abs(colors).min())
 
             surf = ax.plot_surface(X, Y, Z,
                                    facecolors=plt.cm.plasma((colors - colors.min()) / (colors.max() - colors.min())),
@@ -683,7 +715,7 @@ def plot_energies_damping_fraction():
         ax.set_xlabel(r'$d$')
 
         ax.yaxis.set_rotate_label(False)        
-        ax.set_ylabel(r'$N_- / N_+$', rotation = 0, labelpad = 35)    
+        ax.set_ylabel(r'$\gamma_- / \gamma_+$', rotation = 0, labelpad = 35)    
 
         ax.zaxis.set_rotate_label(False)  
         ax.set_zlabel(r'$\omega / \omega_b$', rotation = 0, labelpad = 35)
@@ -760,7 +792,7 @@ def plot_fraction_damping_energy():
         "axes.labelsize": 20,
         "xtick.labelsize": 18,
         "ytick.labelsize": 18,
-        "lines.linewidth" : 10,
+        "lines.linewidth" : 2,
         "pdf.fonttype": 42
     }
 
@@ -808,10 +840,10 @@ def plot_fraction_damping_energy():
 def plot_occupation_coupling():
     """plots asymptotic occupation for racemic mixture"""    
     omega_plus = 1
-    omega_minus = 1
+    detunings = [0]
     omega_b = 1
     g = 1e-2
-    gamma = 0.5    
+    gamma = 0.5
     fraction = 1
     damping = 1
     
@@ -822,39 +854,61 @@ def plot_occupation_coupling():
     zero = 0 * one
     coupling = coupling_gamma * jnp.stack([one, coupling_ratios, zero, zero])
 
-    kernel = get_kernel(omega_plus,
-                        omega_minus,
-                        omega_b,
-                        g,
-                        gamma = gamma,
-                        fraction_minus = fraction,
-                        anti_res = True,
-                        damping = damping)    
-    output = get_bogoliubov(kernel)
+    custom_params = {
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.size": 16,
+        "axes.labelsize": 20,
+        "xtick.labelsize": 18,
+        "ytick.labelsize": 18,
+        "lines.linewidth" : 2,
+        "pdf.fonttype": 42
+    }
 
-    # validate(**output)
-    get_occ_vmapped = jax.vmap(lambda c : get_asymptotic_occupation(output, coupling = c), in_axes = 1, out_axes = 0)    
-    occ = get_occ_vmapped(coupling)
-    print(jnp.abs(occ.imag).max(), jnp.sum(occ < 0))
+    with mpl.rc_context(rc=custom_params):    
+        fig, axs = plt.subplots(1, len(detunings), figsize = (10,5))
 
-    # normalized energy
-    occ = occ.real / occ.real.sum(axis = 1)[:, None]
-    
-    occ_plus = occ[:, 2]
-    occ_minus = occ[:, 3]
-    
-    fig, axs = plt.subplots(1, 1)
+        for i, detuning in enumerate(detunings):
 
-    ax = axs
-    # ax.plot(coupling_ratios, occ)
-    ax.plot(coupling_ratios, occ_plus, label = r'$\langle n_+ \rangle$')
-    ax.plot(coupling_ratios, occ_minus, '--', label = r'$\langle n_- \rangle$')
-    ax.plot(coupling_ratios, occ_plus - occ_minus, '-.')
-    ax.set_xlabel(r'$c_- / c_+$')
-    ax.set_ylabel(r'$\Delta E / \Delta E_t$')    
-    plt.legend()
-    # plt.show()
-    plt.savefig(f"occupation_coupling_{gamma}.pdf")
+            omega_minus = omega_plus + detuning
+
+            kernel = get_kernel(omega_plus,
+                                omega_minus,
+                                omega_b,
+                                g,
+                                gamma = gamma,
+                                fraction_minus = fraction,
+                                anti_res = True,
+                                diamagnetic = True,
+                                damping = damping)    
+            output = get_bogoliubov(kernel)
+
+            # validate(**output)
+            get_occ_vmapped = jax.vmap(lambda c : get_asymptotic_occupation(output, coupling = c), in_axes = 1, out_axes = 0)    
+            occ = get_occ_vmapped(coupling)
+            print(jnp.abs(occ.imag).max(), jnp.sum(occ < 0))
+
+            # to energy => multiply by frequency
+            occ *= jnp.array([omega_plus, omega_minus, omega_b, omega_b])
+
+            # normalized energy
+            occ = occ.real / occ.real.sum(axis = 1)[:, None]
+
+            occ_plus = occ[:, 2]
+            occ_minus = occ[:, 3]
+
+            ax = axs[i] if isinstance(axs, list) else axs
+            
+            # ax.plot(coupling_ratios, occ)
+            ax.plot(coupling_ratios, occ_plus, label = r'$\eta_+$')
+            ax.plot(coupling_ratios, occ_minus, '--', label = r'$\eta_-$')
+            ax.plot(coupling_ratios, occ_plus - occ_minus, '-.', label = r'$\eta_+ - \eta_-$')
+            ax.set_xlabel(r'$c_- / c_+$')
+            ax.set_ylabel(r'$\Delta E / \Delta E_t$')
+            
+        plt.legend(loc = "best")
+        plt.tight_layout()
+        plt.savefig(f"occupation_coupling_{gamma}.pdf")
 
 
 def plot_occupation_fraction_coupling():
@@ -953,78 +1007,94 @@ def plot_occupation_gamma_coupling():
     one = jnp.ones_like(coupling_ratios)
     zero = 0 * one
     coupling = coupling_gamma * jnp.stack([one, coupling_ratios, zero, zero]).T
+    
+    custom_params = {
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.size": 16,
+        "axes.labelsize": 20,
+        "xtick.labelsize": 18,
+        "ytick.labelsize": 18,
+        "lines.linewidth" : 2,
+        "pdf.fonttype": 42
+    }
 
-    # Set up figure
-    fig, axes = plt.subplots(len(g_values), len(f_values), figsize=(15, 10), sharex=True, sharey=True)
+    with mpl.rc_context(rc=custom_params):
 
-    # Iterate over g and gamma values to generate panels
-    for i, g in enumerate(g_values):
-        for j, f in enumerate(f_values):
-            # Compute kernels for the given g and gamma
-            get_kernel_vmapped =  jax.vmap(
-                lambda x:
-                get_kernel(omega_plus,
-                           omega_minus,
-                           omega_b,
-                           g,
-                           gamma=x,
-                           anti_res = True,
-                           fraction_minus=0,
-                           damping=0),
-                in_axes = 0,
-                out_axes = 0)
-            
-            kernels = get_kernel_vmapped(gammas)
-            output = get_bogoliubov_vmapped(kernels)
-            f_tmp = jax.vmap( get_asymptotic_occupation, in_axes=({'energies': 0, 'kernel': 0, "trafo" : 0, "inverse" : 0, "energies_raw" : 0}, None), out_axes = 0)
-            get_asymptotic_occupation_vmapped = jax.vmap(f_tmp, (None, 0), 1)
+        # Set up figure
+        fig, axes = plt.subplots(len(g_values), len(f_values), figsize=(15, 10), sharex=True, sharey=True)
 
-            # fractions x coupling
-            occ =  get_asymptotic_occupation_vmapped(output, coupling)
+        # Iterate over g and gamma values to generate panels
+        for i, g in enumerate(g_values):
+            for j, f in enumerate(f_values):
+                # Compute kernels for the given g and gamma
+                get_kernel_vmapped =  jax.vmap(
+                    lambda x:
+                    get_kernel(omega_plus,
+                               omega_minus,
+                               omega_b,
+                               g,
+                               gamma=x,
+                               anti_res = True,
+                               fraction_minus=0,
+                               damping=0),
+                    in_axes = 0,
+                    out_axes = 0)
 
-            # sanity check print
-            print(jnp.abs(occ.imag).max(), jnp.sum(occ < 0))
-            
-            # normalized transfer difference
-            occ = occ.real / occ.real.sum(axis = -1)[..., None]
-            delta_occ = occ[..., 2] - occ[..., 3]
-            delta_occ = occ[..., 2]
-            
-            # Plot heatmap in the appropriate subplot
-            ax = axes[i, j]            
-            ax.set_title(fr"g={g}, N_+ / N_- ={f}")            
-            ax.plot(gammas, occ[:, 0, :])
-            # print(occ[:, 0, :].sum(axis = -1))
-            # ax.plot(gammas, occ[:, 0, 2])
-        
-            # # rows and columns of image
-            # im = ax.imshow(delta_occ.T, 
-            #                aspect='auto', 
-            #                cmap="coolwarm", 
-            #                origin='lower',
-            #                extent=[gammas.min(), gammas.max(), coupling.min(), coupling.max()])
+                kernels = get_kernel_vmapped(gammas)
+                output = get_bogoliubov_vmapped(kernels)
+                f_tmp = jax.vmap( get_asymptotic_occupation, in_axes=({'energies': 0, 'kernel': 0, "trafo" : 0, "inverse" : 0, "energies_raw" : 0}, None), out_axes = 0)
+                get_asymptotic_occupation_vmapped = jax.vmap(f_tmp, (None, 0), 1)
 
-            # # Set labels and titles
-            # if i == len(g_values) - 1:
-            #     ax.set_xlabel(r'$\gamma$')
-            # if j == 0:
-            #     ax.set_ylabel(r'$c_- / c_+$')                
-            # ax.set_title(fr"g={g}, N_+ / N_- ={f}")
+                # fractions x coupling
+                occ =  get_asymptotic_occupation_vmapped(output, coupling)
 
-            # # Add colorbar to each subplot
-            # divider = make_axes_locatable(ax)
-            # cax = divider.append_axes("right", size="5%", pad=0.05)
-            # cbar = plt.colorbar(im, cax=cax)
-            # # cbar.set_label(r"C_+ - C_-", fontsize=20, labelpad=-85)
-            
-    # Adjust layout and show plot
-    plt.tight_layout()
-    plt.show()
+                # to energy => multiply by frequency
+                occ *= jnp.array([omega_plus, omega_minus, omega_b, omega_b])
+
+                # sanity check print
+                print(jnp.abs(occ.imag).max(), jnp.sum(occ < 0))
+
+                # normalized transfer difference
+                occ = occ.real / occ.real.sum(axis = -1)[..., None]
+                delta_occ = occ[..., 2] - occ[..., 3]
+                delta_occ = occ[..., 2]
+
+                # Plot heatmap in the appropriate subplot
+                ax = axes[i, j]            
+                ax.set_title(fr"g={g}, N_+ / N_- ={f}")            
+                ax.plot(gammas, occ[:, 0, :])
+                # print(occ[:, 0, :].sum(axis = -1))
+                # ax.plot(gammas, occ[:, 0, 2])
+
+                # # rows and columns of image
+                # im = ax.imshow(delta_occ.T, 
+                #                aspect='auto', 
+                #                cmap="coolwarm", 
+                #                origin='lower',
+                #                extent=[gammas.min(), gammas.max(), coupling.min(), coupling.max()])
+
+                # # Set labels and titles
+                # if i == len(g_values) - 1:
+                #     ax.set_xlabel(r'$\gamma$')
+                # if j == 0:
+                #     ax.set_ylabel(r'$c_- / c_+$')                
+                # ax.set_title(fr"g={g}, N_+ / N_- ={f}")
+
+                # # Add colorbar to each subplot
+                # divider = make_axes_locatable(ax)
+                # cax = divider.append_axes("right", size="5%", pad=0.05)
+                # cbar = plt.colorbar(im, cax=cax)
+                # # cbar.set_label(r"C_+ - C_-", fontsize=20, labelpad=-85)
+
+        # Adjust layout and show plot
+        plt.tight_layout()
+        plt.savefig("occupation_gamma_coupling.pdf")
 
 if __name__ == '__main__':
     # matter content
     
-    plot_gamma_energies() # DONE
+    # plot_gamma_energies() # DONE
     # plot_fraction_energies() # DONE
     # plot_fraction_g_energy() # DONE
     # plot_damping_energies() # DONE
@@ -1032,9 +1102,9 @@ if __name__ == '__main__':
 
     # s matrix
     
-    # plot_occupation_coupling()  # TODO pub-hübsch
+    plot_occupation_coupling()  # DONE
     # plot_occupation_fraction_coupling()  # TODO pub-hübsch
-    # plot_occupation_gamma_coupling()  # TODO pub-hübsch
+    plot_occupation_gamma_coupling()  # TODO pub-hübsch
 
     # TODO: appendix gs energy differencex
     # plot_gamma_energies() # TODO pub-hübsch
