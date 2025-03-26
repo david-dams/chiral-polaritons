@@ -836,6 +836,68 @@ def plot_fraction_damping_energy():
         plt.tight_layout()
         plt.savefig("energy_fraction_damping.pdf")
 
+        
+def plot_gamma_transfer():
+    """plots energy transfer occupation for efficiency single enantiomer in perfectly chiral cavity"""    
+    omega_plus = 1
+    omega_minus = 1
+    omega_b = 1
+    g = 1e-2
+    gammas = jnp.logspace(-2, 0.2, 100)
+    fraction = 0
+    damping = 0
+
+    
+    get_kernel_vmapped = lambda g : jax.vmap(
+        lambda gamma : get_kernel(omega_plus,
+                                  omega_minus,
+                                  omega_b,
+                                  g,
+                                  gamma=gamma,
+                                  anti_res = True,                            
+                                  damping=0),
+        in_axes = 0, out_axes = 0)
+
+    kernels = get_kernel_vmapped(g)(gammas)
+    output = get_bogoliubov_vmapped(kernels)
+    
+    get_asymptotic_occupation_vmapped = jax.vmap( get_asymptotic_occupation, in_axes=({'energies': 0, 'kernel': 0, "trafo" : 0, "inverse" : 0, "energies_raw" : 0}, None), out_axes = 0)
+    occ = get_asymptotic_occupation_vmapped(output, jnp.array([1, 0, 0, 0]))
+    print(jnp.abs(occ.imag).max(), jnp.sum(occ < 0))
+    
+    # to energy => multiply by frequency
+    occ *= jnp.array([omega_plus, omega_minus, omega_b, omega_b])
+    
+    # normalized energy
+    occ = occ.real / occ.real.sum(axis = 1)[:, None]
+    
+    occ_plus = occ[:, 2]
+    occ_minus = occ[:, 3]
+
+    custom_params = {
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.size": 16,
+        "axes.labelsize": 20,
+        "xtick.labelsize": 18,
+        "ytick.labelsize": 18,
+        "lines.linewidth" : 2,
+        "pdf.fonttype": 42
+    }
+
+    with mpl.rc_context(rc=custom_params):    
+        fig, ax = plt.subplots(1, 1, figsize = (10,5))
+            
+        # ax.plot(coupling_ratios, occ)
+        ax.plot(gammas, occ_plus)
+        ax.set_xlabel(r'$\gamma$')
+        ax.set_ylabel(r'$\eta$')
+            
+        plt.tight_layout()
+        plt.xscale('log')
+        plt.savefig(f"transfer_gamma.pdf")
+
+
     
 def plot_occupation_coupling():
     """plots asymptotic occupation for racemic mixture"""    
@@ -848,7 +910,7 @@ def plot_occupation_coupling():
     damping = 1
     
     # c_- / c_+
-    coupling_gamma = 1
+    coupling_gamma = 0.5
     coupling_ratios = jnp.linspace(0, 1, 100)
     one = jnp.ones_like(coupling_ratios)
     zero = 0 * one
@@ -904,7 +966,7 @@ def plot_occupation_coupling():
             ax.plot(coupling_ratios, occ_minus, '--', label = r'$\eta_-$')
             ax.plot(coupling_ratios, occ_plus - occ_minus, '-.', label = r'$\eta_+ - \eta_-$')
             ax.set_xlabel(r'$c_- / c_+$')
-            ax.set_ylabel(r'$\Delta E / \Delta E_t$')
+            ax.set_ylabel(r'$\eta$')
             
         plt.legend(loc = "best")
         plt.tight_layout()
@@ -1092,20 +1154,18 @@ def plot_occupation_gamma_coupling():
         plt.savefig("occupation_gamma_coupling.pdf")
 
 if __name__ == '__main__':
-    # matter content
-    
+    # matter content    
     # plot_gamma_energies() # DONE
     # plot_fraction_energies() # DONE
     # plot_fraction_g_energy() # DONE
     # plot_damping_energies() # DONE
     # plot_energies_damping_fraction() # DONE
 
-    # s matrix
-    
-    plot_occupation_coupling()  # DONE
-    # plot_occupation_fraction_coupling()  # TODO pub-hübsch
-    plot_occupation_gamma_coupling()  # TODO pub-hübsch
+    # s matrix    
+    # plot_gamma_transfer()  # DONE
+    # plot_fraction_coupling_transfer() # TODO
+    # plot_detuning_transfer() # TODO
 
-    # TODO: appendix gs energy differencex
-    # plot_gamma_energies() # TODO pub-hübsch
+    # appendix 
+    # plot_gamma_ground_state() # TODO 
 
