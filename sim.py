@@ -289,7 +289,7 @@ def plot_gamma_energies():
         line = add_segment(ax, gammas, energies[:, idx], content_plus[idx], mi = mi, mx = mx)        
         # line.set_label('Upper Polariton')
 
-        ax.set_xlabel(r'$\gamma_+$')
+        ax.set_xlabel(r'$\gamma_+ / \omega_b$')
         ax.set_ylabel(r'$\omega / \omega_b$')
 
         fig.colorbar(line, ax=ax, label=r"$C_+$")
@@ -853,6 +853,7 @@ def plot_gamma_transfer():
                                   omega_minus,
                                   omega_b,
                                   g,
+                                  fraction_minus = fraction,
                                   gamma=gamma,
                                   anti_res = True,                            
                                   damping=0),
@@ -890,7 +891,7 @@ def plot_gamma_transfer():
             
         # ax.plot(coupling_ratios, occ)
         ax.plot(gammas, occ_plus)
-        ax.set_xlabel(r'$\gamma_+$')
+        ax.set_xlabel(r'$\gamma_+ / \omega_b$')
         ax.set_ylabel(r'$\eta_+$')
             
         plt.tight_layout()
@@ -982,9 +983,74 @@ def plot_fraction_coupling_transfer():
         plt.tight_layout()
         plt.savefig("fraction_coupling_transfer.pdf")
 
-        # plt.plot(coupling_ratios, occ[0, :])
-        # plt.show()
-    
+def plot_detuning_transfer():
+    """plots energy transfer occupation for efficiency single enantiomer in perfectly chiral cavity"""    
+    omega_plus = 1
+    omega_minus = 1
+    omega_b = 1
+    g = 1e-2
+    gamma = 0.5
+    detuning = jnp.linspace(0, 10, 100)
+    fraction = 1
+    damping = 1
+
+    coupling_ratios = [0, 0.1, 0.5]
+
+
+    custom_params = {
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.size": 16,
+        "axes.labelsize": 20,
+        "xtick.labelsize": 18,
+        "ytick.labelsize": 18,
+        "lines.linewidth" : 2,
+        "pdf.fonttype": 42
+    }
+
+    with mpl.rc_context(rc=custom_params):    
+        fig, ax = plt.subplots(1, 1, figsize = (10,5))
+
+        for cr in coupling_ratios:
+            get_kernel_vmapped = lambda g : jax.vmap(
+                lambda d : get_kernel(omega_plus,
+                                      omega_minus + d,
+                                      omega_b,
+                                      g,
+                                      gamma=gamma,
+                                      fraction_minus = 1,
+                                      anti_res = True,                            
+                                      damping=1),
+                in_axes = 0, out_axes = 0)
+
+            kernels = get_kernel_vmapped(g)(detuning)
+            output = get_bogoliubov_vmapped(kernels)
+
+            get_asymptotic_occupation_vmapped = jax.vmap( get_asymptotic_occupation, in_axes=({'energies': 0, 'kernel': 0, "trafo" : 0, "inverse" : 0, "energies_raw" : 0}, None), out_axes = 0)
+            occ = get_asymptotic_occupation_vmapped(output, jnp.array([1, cr, 0, 0]))
+            print(jnp.abs(occ.imag).max(), jnp.sum(occ < 0))
+
+            # to energy => multiply by frequency
+            occ *= jnp.array([omega_plus, omega_minus, omega_b, omega_b])
+
+            # normalized energy
+            occ = occ.real / occ.real.sum(axis = 1)[:, None]
+
+            occ_plus = occ[:, 2]
+            occ_minus = occ[:, 3]
+            occ = occ_plus - occ_minus
+
+            # ax.plot(coupling_ratios, occ)
+            ax.plot(detuning, occ, label = rf'$c_- / c_+ =$ {cr}')
+            ax.set_xlabel(r'$\Delta \omega / \omega_b$')
+            ax.set_ylabel(r'$\eta_+ - \eta_-$')
+
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(f"transfer_detuning.pdf")
+            
+
+        
 if __name__ == '__main__':
     # matter content    
     # plot_gamma_energies() # DONE
@@ -996,7 +1062,7 @@ if __name__ == '__main__':
     # s matrix    
     # plot_gamma_transfer()  # DONE
     # plot_fraction_coupling_transfer() # DONE
-    # plot_detuning_transfer() # TODO
+    # plot_detuning_transfer() # DONE
 
     # appendix 
     # plot_gamma_ground_state() # TODO 
