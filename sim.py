@@ -839,8 +839,8 @@ def plot_fraction_damping_energy():
         
 def plot_gamma_transfer():
     """plots energy transfer occupation for efficiency single enantiomer in perfectly chiral cavity"""    
-    omega_plus = 1
-    omega_minus = 1
+    omega_plus = 1.2
+    omega_minus = 1.2
     omega_b = 1
     g = 1e-2
     gammas = jnp.logspace(-2, 0.2, 100)
@@ -890,8 +890,8 @@ def plot_gamma_transfer():
             
         # ax.plot(coupling_ratios, occ)
         ax.plot(gammas, occ_plus)
-        ax.set_xlabel(r'$\gamma$')
-        ax.set_ylabel(r'$\eta$')
+        ax.set_xlabel(r'$\gamma_+$')
+        ax.set_ylabel(r'$\eta_+$')
             
         plt.tight_layout()
         plt.xscale('log')
@@ -973,7 +973,7 @@ def plot_occupation_coupling():
         plt.savefig(f"occupation_coupling_{gamma}.pdf")
 
 
-def plot_occupation_fraction_coupling():
+def plot_fraction_coupling_transfer():
     # Define ranges for g and gamma
     g_values = [1e-3, 1e-2, 1e-1]  # Example values for g
     gamma_values = [1e-2, 1e-1]  # Example values for gamma
@@ -981,77 +981,84 @@ def plot_occupation_fraction_coupling():
     omega_plus = 1
     omega_minus = 1
     omega_b = 1
+    damping = 1
+    gamma = 0.5
+    g = 1e-2
     
-    fractions = jnp.linspace(0, 1, 100)
+    fraction = jnp.linspace(0., 1, 201)    
     
     # c_- / c_+
     coupling_gamma = 1
-    coupling_ratios = jnp.linspace(0, 1, 40)
+    coupling_ratios = jnp.linspace(0, 1, 200)
     one = jnp.ones_like(coupling_ratios)
     zero = 0 * one
     coupling = coupling_gamma * jnp.stack([one, coupling_ratios, zero, zero]).T
 
-    # Set up figure
-    fig, axes = plt.subplots(len(g_values), len(gamma_values), figsize=(15, 10), sharex=True, sharey=True)
+    get_kernel_vmapped =  jax.vmap(
+    lambda f:
+    get_kernel(omega_plus,
+               omega_minus,
+               omega_b,
+               g = g,
+               gamma=gamma,
+               anti_res = True,
+               fraction_minus=f,
+               damping=damping),
+    in_axes = 0,
+    out_axes = 0)
 
-    # Iterate over g and gamma values to generate panels
-    for i, g in enumerate(g_values):
-        for j, gamma in enumerate(gamma_values):
-            # Compute kernels for the given g and gamma
-            get_kernel_vmapped =  jax.vmap(
-                lambda x:
-                get_kernel(omega_plus,
-                           omega_minus,
-                           omega_b,
-                           g,
-                           gamma=gamma,
-                           anti_res = True,
-                           fraction_minus=x,
-                        damping=1),
-                in_axes = 0,
-                out_axes = 0)
-            
-            kernels = get_kernel_vmapped(fractions)
-            output = get_bogoliubov_vmapped(kernels)
-            f_tmp = jax.vmap( get_asymptotic_occupation, in_axes=({'energies': 0, 'kernel': 0, "trafo" : 0, "inverse" : 0, "energies_raw" : 0}, None), out_axes = 0)
-            get_asymptotic_occupation_vmapped = jax.vmap(f_tmp, (None, 0), 1)
+    kernels = get_kernel_vmapped(fraction)
+    output = get_bogoliubov_vmapped(kernels)
+    f_tmp = jax.vmap(get_asymptotic_occupation,
+                     in_axes=({'energies': 0, 'kernel': 0, "trafo" : 0, "inverse" : 0, "energies_raw" : 0}, None),
+                     out_axes = 0)
+    get_asymptotic_occupation_vmapped = jax.vmap(f_tmp, (None, 0), 1)
+    
+    occ = get_asymptotic_occupation_vmapped(output, coupling)
 
-            # fractions x coupling
-            occ =  get_asymptotic_occupation_vmapped(output, coupling)
+    # to energy => multiply by frequency
+    occ *= jnp.array([omega_plus, omega_minus, omega_b, omega_b])
 
-            # sanity check print
-            print(jnp.abs(occ.imag).max(), jnp.sum(occ < 0))
-            
-            # normalized transfer difference
-            occ = occ.real / occ.real.sum(axis = -1)[..., None]
-            delta_occ = occ[..., 2] - occ[..., 3]
-            
-            # Plot heatmap in the appropriate subplot
-            ax = axes[i, j]
-            
-            # rows and columns of image
-            im = ax.imshow(delta_occ.T, 
-                           aspect='auto', 
-                           cmap="coolwarm", 
-                           origin='lower',
-                           extent=[fractions.min(), fractions.max(), coupling.min(), coupling.max()])
+    custom_params = {
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.size": 16,
+        "axes.labelsize": 20,
+        "xtick.labelsize": 18,
+        "ytick.labelsize": 18,
+        "lines.linewidth" : 2,
+        "pdf.fonttype": 42
+    }
 
-            # Set labels and titles
-            if i == len(g_values) - 1:
-                ax.set_xlabel(r'$\frac{N_-}{N_+}$')
-            if j == 0:
-                ax.set_ylabel(r'$c_- / c_+$')                
-            ax.set_title(f"g={g}, gamma={gamma}")
+    with mpl.rc_context(rc=custom_params):    
+    
+        fig, ax = plt.subplots(1, 1)
 
-            # Add colorbar to each subplot
-            divider = make_axes_locatable(ax)
-            cax = divider.append_axes("right", size="5%", pad=0.05)
-            cbar = plt.colorbar(im, cax=cax)
-            # cbar.set_label(r"C_+ - C_-", fontsize=20, labelpad=-85)
+        occ = occ.real / occ.real.sum(axis = -1)[..., None]
+        occ = occ[..., 2] - occ[..., 3]
 
-    # Adjust layout and show plot
-    plt.tight_layout()
-    plt.show()
+        # rows and columns of image
+        im = ax.imshow(occ.T, 
+                       aspect='auto', 
+                       cmap="magma", 
+                       origin='lower',
+                       interpolation = 'sinc',
+                       extent=[fraction.min(), fraction.max(), coupling_ratios.min(), coupling_ratios.max()])
+
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        cbar = plt.colorbar(im, cax=cax)
+        cbar.set_label(r"$\eta_+ - \eta_-$")
+
+        ax.set_xlabel(r"$\gamma_- / \gamma_+$")
+        ax.set_ylabel(r"$c_- / c_+$")
+
+        # Adjust layout and show plot
+        plt.tight_layout()
+        plt.savefig("fraction_coupling_transfer.pdf")
+
+        # plt.plot(coupling_ratios, occ[0, :])
+        # plt.show()
     
 def plot_occupation_gamma_coupling():
     g_values = [1e-3, 1e-2, 1e-1] 
@@ -1163,7 +1170,7 @@ if __name__ == '__main__':
 
     # s matrix    
     # plot_gamma_transfer()  # DONE
-    # plot_fraction_coupling_transfer() # TODO
+    # plot_fraction_coupling_transfer() # DONE
     # plot_detuning_transfer() # TODO
 
     # appendix 
