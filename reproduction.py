@@ -11,11 +11,11 @@ def test_prl():
     # shows decoupling of polaritons into pure matter / pure light excitations when light-matter coupling is strong enough, bc A^2 term dominates there and this minimizes it
     omega_c = 1/1.7
     omega = 1.    
-    scales = jnp.logspace(-2, 1, 100) # 0.01 => 10
+    gammas = jnp.logspace(-2, 1, 100) # 0.01 => 10
 
     def _get_matter_content(s):
         # corresponds to single matter and cavity mode, reproduce with completely chiral mode
-        k = get_kernel(omega_c, omega_c, omega, g = 1, scale = s, diamagnetic = True, anti_res = True)
+        k = get_kernel(omega_c, omega_c, omega, g = 1, gamma = s, diamagnetic = True, anti_res = True)
 
         x = get_bogoliubov(k)["trafo"]
 
@@ -26,12 +26,12 @@ def test_prl():
 
         return matter_content
 
-    # content = jax.vmap(get_matter_content)(scales)
+    # content = jax.vmap(get_matter_content)(gammas)
     content = []
-    for s in scales:
+    for s in gammas:
         content.append(_get_matter_content(s))
 
-    plt.plot(scales, content)
+    plt.plot(gammas, content)
     plt.xscale('log')
     plt.show()
 
@@ -45,24 +45,24 @@ def test_jpcl():
     g = 1e-2
 
     # ~ sqrt(number) of molecules
-    scales = jnp.logspace(-2, 1, 100)
+    gammas = jnp.logspace(-2, 1, 100)
     # linear scaling of gs discrimination for small number of molecules jnp.logspace(0, 1, 100)
 
     def get_energy_deltas(s):
         # corresponds to different enantiomers placed separately into perfectly chiral cavity at resonance
 
         # "reproduce" by zeroing out one mode, setting negative coupling to this mode for other chirality    
-        k_plus = get_kernel(omega_c, 0, omega, g = g, scale = s, diamagnetic = True, anti_res = True, damping = 0)
+        k_plus = get_kernel(omega_c, 0, omega, g = g, gamma = s, diamagnetic = True, anti_res = True, damping = 0)
         energies_plus = get_bogoliubov(k_plus)["energies"][:4]
 
-        k_minus = get_kernel(omega_c, 0, omega, g = -g, scale = s, diamagnetic = True, anti_res = True, damping = 0)
+        k_minus = get_kernel(omega_c, 0, omega, g = -g, gamma = s, diamagnetic = True, anti_res = True, damping = 0)
         energies_minus = get_bogoliubov(k_minus)["energies"][:4]
 
         # energies come in pairs, one of them ios decoupled => 0
         return energies_plus, energies_minus
 
     e_p, e_m = [], []
-    for s in scales:
+    for s in gammas:
         ep, em = get_energy_deltas(s)
         e_p.append(ep)
         e_m.append(em)
@@ -70,18 +70,18 @@ def test_jpcl():
     e_p = jnp.array(e_p).real
     e_m = jnp.array(e_m).real
 
-    plt.plot(scales**2, (e_p - e_m)[:, [0, -1]] )
+    plt.plot(gammas**2, (e_p - e_m)[:, [0, -1]] )
     delta_vac = e_p[:, 0] + e_p[:, -1] - (e_m[:, 0] + e_m[:, -1])
-    plt.plot(scales**2, delta_vac.real / 2, '--')
+    plt.plot(gammas**2, delta_vac.real / 2, '--')
 
     # see individual branches
-    # plt.plot(scales**2, e_p[:, 0] + e_p[:, -1], '-')
-    # plt.plot(scales**2, e_m[:, 0] + e_m[:, -1], '--')
+    # plt.plot(gammas**2, e_p[:, 0] + e_p[:, -1], '-')
+    # plt.plot(gammas**2, e_m[:, 0] + e_m[:, -1], '--')
 
     # turn off to see sqrt / linear scaling
     plt.xscale('log')
     
     plt.show()
     
-test_prl()
+# test_prl()
 test_jpcl()
