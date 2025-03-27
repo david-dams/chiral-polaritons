@@ -887,7 +887,7 @@ def plot_gamma_transfer():
     }
 
     with mpl.rc_context(rc=custom_params):    
-        fig, ax = plt.subplots(1, 1, figsize = (10,5))
+        fig, ax = plt.subplots(1, 1)
             
         # ax.plot(coupling_ratios, occ)
         ax.plot(gammas, occ_plus)
@@ -900,86 +900,87 @@ def plot_gamma_transfer():
     
 
 def plot_fraction_coupling_transfer():
-    # Define ranges for g and gamma
-    g_values = [1e-3, 1e-2, 1e-1]  # Example values for g
-    gamma_values = [1e-2, 1e-1]  # Example values for gamma
-
     omega_plus = 1
     omega_minus = 1
     omega_b = 1
     damping = 1
     gamma = 0.5
     g = 1e-2
-    
-    fraction = jnp.linspace(0., 1, 201)    
-    
-    # c_- / c_+
+
+    fraction = jnp.linspace(0., 1, 201)
+
     coupling_gamma = 1
     coupling_ratios = jnp.linspace(0, 1, 200)
     one = jnp.ones_like(coupling_ratios)
     zero = 0 * one
     coupling = coupling_gamma * jnp.stack([one, coupling_ratios, zero, zero]).T
 
-    get_kernel_vmapped =  jax.vmap(
-    lambda f:
-    get_kernel(omega_plus,
-               omega_minus,
-               omega_b,
-               g = g,
-               gamma=gamma,
-               anti_res = True,
-               fraction_minus=f,
-               damping=damping),
-    in_axes = 0,
-    out_axes = 0)
+    get_kernel_vmapped = jax.vmap(
+        lambda f: get_kernel(omega_plus, omega_minus, omega_b, g=g, gamma=gamma,
+                             anti_res=True, fraction_minus=f, damping=damping),
+        in_axes=0, out_axes=0
+    )
 
     kernels = get_kernel_vmapped(fraction)
     output = get_bogoliubov_vmapped(kernels)
-    f_tmp = jax.vmap(get_asymptotic_occupation,
-                     in_axes=({'energies': 0, 'kernel': 0, "trafo" : 0, "inverse" : 0, "energies_raw" : 0}, None),
-                     out_axes = 0)
-    get_asymptotic_occupation_vmapped = jax.vmap(f_tmp, (None, 0), 1)
-    
-    occ = get_asymptotic_occupation_vmapped(output, coupling)
 
-    # to energy => multiply by frequency
+    f_tmp = jax.vmap(get_asymptotic_occupation,
+                     in_axes=({'energies': 0, 'kernel': 0, "trafo": 0,
+                               "inverse": 0, "energies_raw": 0}, None),
+                     out_axes=0)
+
+    get_asymptotic_occupation_vmapped = jax.vmap(f_tmp, (None, 0), 1)
+
+    occ = get_asymptotic_occupation_vmapped(output, coupling)
     occ *= jnp.array([omega_plus, omega_minus, omega_b, omega_b])
 
+    # Normalizing data for plotting
+    occ_norm = occ.real / occ.real.sum(axis=-1)[..., None]
+    colorplot_data = occ_norm[..., 2] - occ_norm[..., 3]
+
+    # --- Plotting ---
     custom_params = {
         "text.usetex": True,
         "font.family": "serif",
         "font.size": 16,
-        "axes.labelsize": 20,
-        "xtick.labelsize": 18,
-        "ytick.labelsize": 18,
-        "lines.linewidth" : 2,
+        "axes.labelsize": 18,
+        "xtick.labelsize": 16,
+        "ytick.labelsize": 16,
+        "lines.linewidth": 2,
         "pdf.fonttype": 42
     }
 
-    with mpl.rc_context(rc=custom_params):    
-    
-        fig, ax = plt.subplots(1, 1)
+    with mpl.rc_context(custom_params):
+        fig, (ax_heatmap, ax_lines) = plt.subplots(1, 2, figsize=(12, 5), gridspec_kw={'width_ratios': [1, 1.2]})
 
-        occ = occ.real / occ.real.sum(axis = -1)[..., None]
-        occ = occ[..., 2] - occ[..., 3]
+        # Left plot: heatmap
+        im = ax_heatmap.imshow(colorplot_data.T,
+                               aspect='auto',
+                               cmap="magma",
+                               origin='lower',
+                               interpolation='sinc',
+                               extent=[fraction.min(), fraction.max(), coupling_ratios.min(), coupling_ratios.max()])
 
-        # rows and columns of image
-        im = ax.imshow(occ.T, 
-                       aspect='auto', 
-                       cmap="magma", 
-                       origin='lower',
-                       interpolation = 'sinc',
-                       extent=[fraction.min(), fraction.max(), coupling_ratios.min(), coupling_ratios.max()])
-
-        divider = make_axes_locatable(ax)
+        divider = make_axes_locatable(ax_heatmap)
         cax = divider.append_axes("right", size="5%", pad=0.05)
         cbar = plt.colorbar(im, cax=cax)
         cbar.set_label(r"$\eta_+ - \eta_-$")
 
-        ax.set_xlabel(r"$\gamma_- / \gamma_+$")
-        ax.set_ylabel(r"$c_- / c_+$")
+        ax_heatmap.set_xlabel(r"$\gamma_- / \gamma_+$")
+        ax_heatmap.set_ylabel(r"$c_- / c_+$")
 
-        # Adjust layout and show plot
+        # Right plot: line plots
+        line_indices = [10, 50, 100, 150, 201]  # example columns from coupling_ratios
+        colorplot_data = colorplot_data.T
+        colorplot_data /= jnp.max(colorplot_data, axis = 0)
+        for idx in line_indices:
+            ax_lines.plot(coupling_ratios, colorplot_data[:, idx], label=rf"$\gamma_- / \gamma_+ ={fraction[idx]:.2f}$")
+
+        ax_lines.set_xlabel(r"$c_- / c_+$")
+        ax_lines.set_ylabel(r"$\eta_+ - \eta_-$ (normalized)")
+        ax_lines.legend()
+        ax_lines.grid(True)
+
         plt.tight_layout()
         plt.savefig("fraction_coupling_transfer.pdf")
 
@@ -1009,7 +1010,7 @@ def plot_detuning_transfer():
     }
 
     with mpl.rc_context(rc=custom_params):    
-        fig, ax = plt.subplots(1, 1, figsize = (10,5))
+        fig, ax = plt.subplots(1, 1)
 
         for cr in coupling_ratios:
             get_kernel_vmapped = lambda g : jax.vmap(
@@ -1048,7 +1049,70 @@ def plot_detuning_transfer():
         plt.legend()
         plt.tight_layout()
         plt.savefig(f"transfer_detuning.pdf")
-            
+
+
+def plot_gamma_ground_state():
+    # J. Phys. Chem. Lett. 2023, 14, 3777−3784
+    # shows difference between polaritonic ground and excited state energies for single-mode chiral cavity with singly chiral molecules inside when number of molecules is increased
+
+    omega_c = 1.
+    omega = 1.
+    g = 1e-2
+
+    # ~ sqrt(number) of molecules
+    gammas = jnp.linspace(0.1, 10, 100)
+    # linear scaling of gs discrimination for small number of molecules jnp.logspace(0, 1, 100)
+
+    def get_energy_deltas(s):
+        # corresponds to different enantiomers placed separately into perfectly chiral cavity at resonance
+
+        # "reproduce" by zeroing out one mode, setting negative coupling to this mode for other chirality    
+        k_plus = get_kernel(omega_c, 0, omega, g = g, gamma = s, diamagnetic = True, anti_res = True, damping = 0)
+        energies_plus = get_bogoliubov(k_plus)["energies"][:4]
+
+        k_minus = get_kernel(omega_c, 0, omega, g = -g, gamma = s, diamagnetic = True, anti_res = True, damping = 0)
+        energies_minus = get_bogoliubov(k_minus)["energies"][:4]
+
+        # energies come in pairs, one of them ios decoupled => 0
+        return energies_plus, energies_minus
+
+    custom_params = {
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.size": 16,
+        "axes.labelsize": 20,
+        "xtick.labelsize": 18,
+        "ytick.labelsize": 18,
+        "lines.linewidth" : 4,
+        "pdf.fonttype": 42
+    }
+
+    with mpl.rc_context(rc=custom_params):    
+        fig, ax = plt.subplots(1, 1)
+    
+        e_p, e_m = [], []
+        for s in gammas:
+            ep, em = get_energy_deltas(s)
+            e_p.append(ep)
+            e_m.append(em)
+
+        e_p = jnp.array(e_p).real
+        e_m = jnp.array(e_m).real
+
+        # ax.plot(gammas**2, (e_p - e_m)[:, [0, -1]] )
+        fac = 0.02
+        delta_vac = e_p[:, 0] + e_p[:, -1] - (e_m[:, 0] + e_m[:, -1])
+        ax.plot(gammas**2, delta_vac.real / 2, label = 'analytic')
+        sqrt_term = gammas
+        ax.plot(gammas**2, fac * sqrt_term, '--', label = r'$0.02 \cdot \gamma \omega_b$')
+        
+        ax.set_xlabel(r'$(\gamma / \omega_b)^2$')
+        ax.set_ylabel(r'$\delta E / \omega_b$')
+        plt.legend()
+        
+        plt.tight_layout()
+        plt.savefig("sqrt_scaling.pdf")
+
 
         
 if __name__ == '__main__':
@@ -1061,9 +1125,8 @@ if __name__ == '__main__':
 
     # s matrix    
     # plot_gamma_transfer()  # DONE
-    # plot_fraction_coupling_transfer() # DONE
+    plot_fraction_coupling_transfer() # TODO
     # plot_detuning_transfer() # DONE
 
     # appendix 
-    # plot_gamma_ground_state() # TODO 
-
+    # plot_gamma_ground_state() # DONE
